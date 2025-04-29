@@ -205,46 +205,6 @@ def read_serial(port_name='/dev/tty.usbmodem3041', baudrate=115200):
 
 threading.Thread(target=read_serial, daemon=True).start()
 
-
-import pygame
-import math
-
-pygame.init()
-
-WIDTH, HEIGHT = 550, 900
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption('VESC Speedometer')
-
-font_large = pygame.font.SysFont('Arial', 72)
-font_medium = pygame.font.SysFont('Arial', 36)
-font_small = pygame.font.SysFont('Arial', 24)
-clock = pygame.time.Clock()
-
-def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
-  pygame.draw.rect(surface, (50, 50, 50), (x, y, width, height))
-  fill_width = int(width * min(value / max_value, 1.0))
-  pygame.draw.rect(surface, color, (x, y, fill_width, height))
-
-def draw_speed_arc(surface, center, radius, speed, max_speed):
-  pygame.draw.arc(surface, (100, 100, 100), (center[0]-radius, center[1]-radius, radius*2, radius*2), math.pi, 2*math.pi, 20)
-  end_angle = math.pi + (speed / max_speed) * math.pi
-  if speed > 0:
-    pygame.draw.arc(surface, (0, 200, 0), (center[0]-radius, center[1]-radius, radius*2, radius*2), math.pi, min(end_angle, 2*math.pi), 20)
-
-def draw_text_center(surface, text, font, color, y):
-  render = font.render(text, True, color)
-  rect = render.get_rect(center=(WIDTH//2, y))
-  surface.blit(render, rect)
-
-data = {
-  'speed': 0,
-  'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
-  'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
-  'battery_voltage': 0,
-  'battery_level': 0,
-  'odometer': 0
-}
-
 ######## INTERFACE
 import pygame
 import math
@@ -252,6 +212,7 @@ import time
 
 pygame.init()
 
+WIDTH, HEIGHT = 550, 900
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('VESC Speedometer')
 
