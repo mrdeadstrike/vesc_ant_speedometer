@@ -134,7 +134,10 @@ def pack_packet_slave(payload):
   crc = struct.pack('>H', crc16_slave(payload))
   return start + length + payload + crc + end
 
-def read_serial(port_name='/dev/tty.usbmodem3041', baudrate=115200):
+def read_serial(
+                #port_name='/dev/tty.usbmodem3041', #MAC
+                port_name='/dev/ttyACM0', #Raspbery PI
+                baudrate=115200):
   try:
     ser = serial.Serial(port_name, baudrate, timeout=0.1)
   except Exception as e:
