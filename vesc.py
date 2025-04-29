@@ -509,6 +509,19 @@ while running:
   time_rect = time_text.get_rect(topleft=(20, 765 - 5))
   screen.blit(time_text, time_rect)
 
+  # Кнопка выключения
+  button_rect = pygame.Rect(20, 20, 60, 40)
+  pygame.draw.rect(screen, (100, 0, 0), button_rect, border_radius=10)
+  button_text = font_small.render("Выкл", True, (255, 255, 255))
+  screen.blit(button_text, button_text.get_rect(center=button_rect.center))
+
+  mouse = pygame.mouse.get_pos()
+  click = pygame.mouse.get_pressed()
+  if button_rect.collidepoint(mouse) and click[0]:
+    import os
+    pygame.quit()
+    os.system('sudo shutdown now')
+
   pygame.display.flip()
   clock.tick(30)
 
