@@ -212,7 +212,7 @@ import time
 
 pygame.init()
 
-WIDTH, HEIGHT = 550, 900
+WIDTH, HEIGHT = 600, 1000
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('VESC Speedometer')
 
