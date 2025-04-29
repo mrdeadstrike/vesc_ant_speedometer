@@ -219,7 +219,7 @@ WIDTH, HEIGHT = 600, 960
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('VESC Speedometer')
 
-font_large = pygame.font.SysFont('Arial', 100)
+font_large = pygame.font.SysFont('Arial', 125)
 font_medium = pygame.font.SysFont('Arial', 36)
 font_small = pygame.font.SysFont('Arial', 24)
 clock = pygame.time.Clock()
