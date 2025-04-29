@@ -221,28 +221,7 @@ font_medium = pygame.font.SysFont('Arial', 36)
 font_small = pygame.font.SysFont('Arial', 24)
 clock = pygame.time.Clock()
 
-def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
-  pygame.draw.rect(surface, (50, 50, 50), (x, y, width, height))
-  fill_width = int(width * min(value / max_value, 1.0))
-  pygame.draw.rect(surface, color, (x, y, fill_width, height))
 
-def draw_speed_arc(surface, center, radius, speed, max_speed):
-  pygame.draw.arc(surface, (100, 100, 100), (center[0]-radius, center[1]-radius, radius*2, radius*2),
-                  math.pi/2, 3*math.pi/2, 20)
-  end_angle = (math.pi/2) + (speed / max_speed) * math.pi
-  if speed > 0:
-    pygame.draw.arc(surface, (0, 200, 0), (center[0]-radius, center[1]-radius, radius*2, radius*2),
-                    math.pi/2, min(end_angle, 3*math.pi/2), 20)
-
-def draw_text_center(surface, text, font, color, y):
-  render = font.render(text, True, color)
-  rect = render.get_rect(center=(WIDTH//2, y))
-  surface.blit(render, rect)
-
-def draw_text(surface, text, font, color, x, y):
-  render = font.render(text, True, color)
-  rect = render.get_rect(center=(x, y))
-  surface.blit(render, rect)
 
 data = {
   'speed': 0,
@@ -252,65 +231,6 @@ data = {
   'battery_level': 0,
   'odometer': 0
 }
-
-# Переменные для замера разгона 0-40 км/ч
-import pygame
-import math
-import time
-
-pygame.init()
-
-WIDTH, HEIGHT = 480, 800
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption('VESC Speedometer')
-
-font_large = pygame.font.SysFont('Arial', 72)
-font_medium = pygame.font.SysFont('Arial', 36)
-font_small = pygame.font.SysFont('Arial', 24)
-clock = pygame.time.Clock()
-
-def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
-  pygame.draw.rect(surface, (50, 50, 50), (x, y, width, height))
-  fill_width = int(width * min(value / max_value, 1.0))
-  pygame.draw.rect(surface, color, (x, y, fill_width, height))
-
-def draw_speed_arc(surface, center, radius, speed, max_speed):
-  pygame.draw.arc(surface, (100, 100, 100), (center[0]-radius, center[1]-radius, radius*2, radius*2),
-                  math.pi/2, 3*math.pi/2, 20)
-  end_angle = (math.pi/2) + (speed / max_speed) * math.pi
-  if speed > 0:
-    pygame.draw.arc(surface, (0, 200, 0), (center[0]-radius, center[1]-radius, radius*2, radius*2),
-                    math.pi/2, min(end_angle, 3*math.pi/2), 20)
-
-def draw_text_center(surface, text, font, color, y):
-  render = font.render(text, True, color)
-  rect = render.get_rect(center=(WIDTH//2, y))
-  surface.blit(render, rect)
-
-data = {
-  'speed': 0,
-  'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
-  'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
-  'battery_voltage': 0,
-  'battery_level': 0,
-  'odometer': 0
-}
-
-# Переменные для замера разгона 0-40 км/ч
-import pygame
-import math
-import time
-
-pygame.init()
-
-WIDTH, HEIGHT = 480, 800
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption('VESC Speedometer')
-
-font_large = pygame.font.SysFont('Arial', 100)
-font_medium = pygame.font.SysFont('Arial', 36)
-font_small = pygame.font.SysFont('Arial', 24)
-clock = pygame.time.Clock()
 
 def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
   pygame.draw.rect(surface, (50, 50, 50), (x, y, width, height), border_radius=5)
@@ -353,6 +273,11 @@ def draw_text_center(surface, text, font, color, y):
   rect = render.get_rect(center=(WIDTH//2, y))
   surface.blit(render, rect)
 
+def draw_text(surface, text, font, color, x, y):
+  render = font.render(text, True, color)
+  rect = render.get_rect(center=(x, y))
+  surface.blit(render, rect)
+
 def get_battery_color(level):
   if level < 25:
     return (255, 0, 0)
@@ -360,15 +285,6 @@ def get_battery_color(level):
     return (255, 165, 0)
   else:
     return (0, 255, 0)
-
-data = {
-  'speed': 0,
-  'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
-  'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
-  'battery_voltage': 0,
-  'battery_level': 0,
-  'odometer': 0
-}
 
 # Переменные для замера разгона 0-40 км/ч
 start_time = None
