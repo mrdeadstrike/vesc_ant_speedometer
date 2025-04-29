@@ -267,7 +267,7 @@ def draw_speed_arc(surface, center, radius, speed, max_speed):
 
     x = center[0] + radius * 1.2 * math.cos(angle)
     y = center[1] + radius * 1.2 * math.sin(angle)
-    label = font_small.render(str(mark), True, (255, 255, 255))
+    label = font_small.render(str(mark), True, (0, 0, 0))
     label_rect = label.get_rect(center=(x, y))
     surface.blit(label, label_rect)
 
@@ -304,11 +304,11 @@ while running:
 
   # Здесь подставляй реальные данные в переменную data
 
-  screen.fill((0, 0, 0))
+  screen.fill((254, 254, 254))
 
   # 1. Скорость полукруг
   draw_speed_arc(screen, (WIDTH//2, 200), 150, data['speed'], 60)
-  draw_text_center(screen, f"{int(data['speed'])}", font_large, (255, 255, 255), 190)
+  draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), 190)
 
   # 2. Показатели мастер и слейв
   y_offset = 360
@@ -326,8 +326,8 @@ while running:
     draw_text(screen, f"{int(data[side]['battery_current'])}A", font_small, (0, 0, 255), x, y_offset + 20)
     draw_progress_bar(screen, x-40, y_offset + 50, 80, 10, data[side]['battery_current'], 25, (0, 0, 255))
 
-    draw_text(screen, f"{int(data[side]['duty'])}%", font_small, (255, 255, 255), x, y_offset + 80)
-    draw_progress_bar(screen, x-40, y_offset + 110, 80, 10, data[side]['duty'], 100, (255, 255, 255))
+    draw_text(screen, f"{int(data[side]['duty'])}%", font_small, (0, 0, 0), x, y_offset + 80)
+    draw_progress_bar(screen, x-40, y_offset + 110, 80, 10, data[side]['duty'], 100, (0, 0, 0))
 
     temp = font_small.render(f"{int(data[side]['temp'])}°C", True, (0, 255, 0))
     screen.blit(temp, (x-25, 500))
@@ -353,11 +353,11 @@ while running:
 
   if measuring:
     current_elapsed = time.time() - start_time
-    draw_text_center(screen, f"Разгон: {current_elapsed:.2f} сек", font_medium, (255, 255, 255), 600)
+    draw_text_center(screen, f"Разгон: {current_elapsed:.2f} сек", font_medium, (0, 0, 0), 600)
   elif measured_time is not None:
-    draw_text_center(screen, f"0-40: {measured_time:.2f} сек", font_medium, (255, 255, 255), 600)
+    draw_text_center(screen, f"0-40: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600)
   else:
-    draw_text_center(screen, "Готов", font_medium, (255, 255, 255), 600)
+    draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600)
 
   # 4. Вольтаж батареи и заряд
   battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {int(data['battery_level'])}%", True, (0, 255, 255))
@@ -373,25 +373,25 @@ while running:
     trip_time = time.time() - trip_start_time
     minutes = int(trip_time // 60)
     seconds = int(trip_time % 60)
-    draw_text(screen, f"{minutes:02d}:{seconds:02d}", font_small, (255, 255, 255), 400, 860)
+    draw_text(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), 400, 860)
 
 
   # Отображение даты и времени
   now = datetime.datetime.now()
   weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
   months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
-  date_text = font_small.render(f"{weekdays[now.weekday()]} {now.day} {months[now.month-1]}", True, (255, 255, 255))
+  date_text = font_small.render(f"{weekdays[now.weekday()]} {now.day} {months[now.month-1]}", True, (0, 0, 0))
   date_rect = date_text.get_rect(topleft=(20, 840 - 5))
   screen.blit(date_text, date_rect)
 
-  time_text = font_small.render(f"{now.hour:02d}:{now.minute:02d}", True, (255, 255, 255))
+  time_text = font_small.render(f"{now.hour:02d}:{now.minute:02d}", True, (0, 0, 0))
   time_rect = time_text.get_rect(topleft=(20, 865 - 5))
   screen.blit(time_text, time_rect)
 
   # Кнопка выключения
   button_rect = pygame.Rect(20, 20, 60, 40)
   pygame.draw.rect(screen, (100, 0, 0), button_rect, border_radius=10)
-  button_text = font_small.render("Выкл", True, (255, 255, 255))
+  button_text = font_small.render("Выкл", True, (0, 0, 0))
   screen.blit(button_text, button_text.get_rect(center=button_rect.center))
 
   mouse = pygame.mouse.get_pos()
