@@ -290,6 +290,39 @@ def draw_speed_arc(surface, center, radius, speed, max_speed):
     label_rect = label.get_rect(center=(x, y))
     surface.blit(label, label_rect)
 
+def draw_arc(text, surface, center, radius, speed, max_speed, color):
+  draw_text(screen, text, font_medium, color, center[0], center[1] - 5)
+  pygame.draw.arc(surface, (200, 200, 200), (center[0]-radius, center[1]-radius, radius*2, radius*2),
+                  -math.pi * 0.15, math.pi * 1.15, 15)
+  end_angle = math.pi * 1.15 - (speed / max_speed) * math.pi * 1.3
+  if speed > 0:
+    pygame.draw.arc(surface, color, (center[0]-radius, center[1]-radius, radius*2, radius*2),
+                    end_angle, math.pi * 1.15, 15)
+    
+    return
+    # Маленький зелёный маркер на дуге
+    marker_outer_x = center[0] + (radius - 1)* math.cos(end_angle)
+    marker_outer_y = center[1] - (radius - 1) * math.sin(end_angle)
+    marker_inner_x = center[0] + (radius - 50) * math.cos(end_angle)
+    marker_inner_y = center[1] - (radius - 50) * math.sin(end_angle)
+    pygame.draw.line(surface, (0, 200, 0), (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 10)
+
+  return
+  # Отметки скорости
+  for mark in [0, 20, 40, 60]:
+    angle = math.pi * 0.85 + (mark / max_speed) * math.pi * 1.3
+    x_outer = center[0] + (radius + 5) * math.cos(angle)
+    y_outer = center[1] + (radius + 5) * math.sin(angle)
+    x_inner = center[0] + (radius - 20) * math.cos(angle)
+    y_inner = center[1] + (radius - 20) * math.sin(angle)
+    pygame.draw.line(surface, (60, 60, 60), (x_inner, y_inner), (x_outer, y_outer), 3)
+
+    x = center[0] + radius * 1.2 * math.cos(angle)
+    y = center[1] + radius * 1.2 * math.sin(angle)
+    label = font_small.render(str(mark), True, (0, 0, 0))
+    label_rect = label.get_rect(center=(x, y))
+    surface.blit(label, label_rect)
+
 def draw_text_center(surface, text, font, color, y):
   render = font.render(text, True, color)
   rect = render.get_rect(center=(WIDTH//2, y))
@@ -329,27 +362,34 @@ while running:
   draw_speed_arc(screen, (WIDTH//2, 180), 150, data['speed'], 60)
   draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), 180)
 
-  # 2. Показатели мастер и слейв
+  # 2. Показатели контроллеров мастер и слейв
   y_offset = 360
   spacing_x = 190
+
+  summ_current = data['slave']['motor_current'] + data['master']['motor_current']
+  draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.2, 370), 80, summ_current, 200, (255, 0, 0))
+  summ_battery = data['slave']['battery_current'] + data['master']['battery_current']
+  draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.5, 370), 80, summ_battery, 50, (0, 0, 255))
+  average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
+  draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.8, 370), 80, average_duty, 100, (0, 0, 0))
 
   for idx, side in enumerate(['slave', 'master']):
     x = (WIDTH//2 - spacing_x) if side == 'master' else (WIDTH//2 + spacing_x)
 
     # Рисуем рамку вокруг каждого контроллера
-    pygame.draw.rect(screen, (120, 120, 120), (x-70, y_offset-65, 140, 250), width=2, border_radius=20)
+    #pygame.draw.rect(screen, (120, 120, 120), (x-70, y_offset-65, 140, 250), width=2, border_radius=20)
 
-    draw_text(screen, f"{int(data[side]['motor_current'])}A", font_small, (255, 0, 0), x, y_offset - 35)
-    draw_progress_bar(screen, x-50, y_offset - 10, 100, 10, data[side]['motor_current'], 100, (255, 0, 0))
+    #draw_text(screen, f"{int(data[side]['motor_current'])}A", font_small, (255, 0, 0), x, y_offset - 35)
+    #draw_progress_bar(screen, x-50, y_offset - 10, 100, 10, data[side]['motor_current'], 100, (255, 0, 0))
 
-    draw_text(screen, f"{int(data[side]['battery_current'])}A", font_small, (0, 0, 255), x, y_offset + 25)
-    draw_progress_bar(screen, x-50, y_offset + 50, 100, 10, data[side]['battery_current'], 25, (0, 0, 255))
+    #draw_text(screen, f"{int(data[side]['battery_current'])}A", font_small, (0, 0, 255), x, y_offset + 25)
+    #draw_progress_bar(screen, x-50, y_offset + 50, 100, 10, data[side]['battery_current'], 25, (0, 0, 255))
 
-    draw_text(screen, f"{int(data[side]['duty'])}%", font_small, (0, 0, 0), x, y_offset + 85)
-    draw_progress_bar(screen, x-50, y_offset + 110, 100, 10, data[side]['duty'], 100, (0, 0, 0))
+    #draw_text(screen, f"{int(data[side]['duty'])}%", font_small, (0, 0, 0), x, y_offset + 85)
+    #draw_progress_bar(screen, x-50, y_offset + 110, 100, 10, data[side]['duty'], 100, (0, 0, 0))
 
     temp = font_small.render(f"{int(data[side]['temp'])}°C", True, (0, 200, 0))
-    screen.blit(temp, (x-25, 490))
+    screen.blit(temp, (x-25, 450))
 
   # 3. Замер времени разгона 0-40 км/ч
   if ready and data['speed'] > 0:
