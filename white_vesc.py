@@ -256,8 +256,8 @@ def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
     pygame.draw.rect(surface, color, (x, y, fill_width, height), border_radius=10)
 
 #TEMP
-data['speed'] = 40
-data['battery_level'] = 55
+#data['speed'] = 40
+#data['battery_level'] = 55
 #######
 
 def draw_speed_arc(surface, center, radius, speed, max_speed):
