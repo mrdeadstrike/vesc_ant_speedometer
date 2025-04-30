@@ -369,7 +369,7 @@ while running:
   summ_current = data['slave']['motor_current'] + data['master']['motor_current']
   draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.2, 370), 80, summ_current, 200, (255, 0, 0))
   summ_battery = data['slave']['battery_current'] + data['master']['battery_current']
-  draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.5, 370), 80, summ_battery, 50, (0, 0, 255))
+  draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.5, 370), 80, summ_battery, 50, (0, 0, 255))
   average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
   draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.8, 370), 80, average_duty, 100, (0, 0, 0))
 
@@ -390,6 +390,12 @@ while running:
 
     temp = font_small.render(f"{int(data[side]['temp'])}°C", True, (0, 200, 0))
     screen.blit(temp, (x-25, 450))
+
+  # блокируем тач при движении
+  if data['speed'] > 0:
+    pass
+  else:
+    pass
 
   # 3. Замер времени разгона 0-40 км/ч
   if ready and data['speed'] > 0:
