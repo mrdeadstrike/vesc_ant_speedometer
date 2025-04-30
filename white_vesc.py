@@ -11,6 +11,10 @@ PACKET_INDEX_FOR_VESC = 47#4
 
 
 # Данные контроллеров
+trip_start_odometer = None
+trip_distance_km = 0.0
+trip_avg_speed = 0.0
+trip_time_start = time.time()
 data = {
   'speed': 0,
   'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
@@ -165,6 +169,16 @@ def read_serial(
               wheel_rpm = rpm
               speed_mps = (wheel_rpm * wheel_circumference_m) / 60
               data['speed'] = int(speed_mps * 3.6)
+
+              # Расчёт дистанции и средней скорости поездки
+              if 'trip_odometer' not in data:
+                data['trip_odometer'] = 0.0
+              data['trip_odometer'] += (speed_mps * 0.05) / 1000  # м/с * время = м → км
+              trip_distance_km = data['trip_odometer']
+              elapsed_time = time.time() - trip_time_start
+              if elapsed_time > 0:
+                trip_avg_speed = trip_distance_km / (elapsed_time / 3600.0)
+                
               data['master']['motor_current'] = motor_current
               data['master']['battery_current'] = input_current
               data['master']['duty'] = duty_cycle
@@ -219,9 +233,9 @@ WIDTH, HEIGHT = 600, 960
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('VESC Speedometer')
 
-font_large = pygame.font.SysFont('Arial', 125)
-font_medium = pygame.font.SysFont('Arial', 36)
-font_small = pygame.font.SysFont('Arial', 24)
+font_large = pygame.font.SysFont('Arial', 150)
+font_medium = pygame.font.SysFont('Arial', 50)
+font_small = pygame.font.SysFont('Arial', 35)
 clock = pygame.time.Clock()
 
 
@@ -236,34 +250,39 @@ data = {
 }
 
 def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
-  pygame.draw.rect(surface, (50, 50, 50), (x, y, width, height), border_radius=5)
+  pygame.draw.rect(surface, (200, 200, 200), (x, y, width, height), border_radius=10)
   fill_width = int(width * min(value / max_value, 1.0))
   if fill_width > 0:
-    pygame.draw.rect(surface, color, (x, y, fill_width, height), border_radius=5)
+    pygame.draw.rect(surface, color, (x, y, fill_width, height), border_radius=10)
+
+#TEMP
+data['speed'] = 40
+data['battery_level'] = 55
+#######
 
 def draw_speed_arc(surface, center, radius, speed, max_speed):
-  pygame.draw.arc(surface, (100, 100, 100), (center[0]-radius, center[1]-radius, radius*2, radius*2),
-                  0, math.pi, 10)
-  end_angle = math.pi - (speed / max_speed) * math.pi
+  pygame.draw.arc(surface, (200, 200, 200), (center[0]-radius, center[1]-radius, radius*2, radius*2),
+                  -math.pi * 0.15, math.pi * 1.15, 15)
+  end_angle = math.pi * 1.15 - (speed / max_speed) * math.pi * 1.3
   if speed > 0:
     pygame.draw.arc(surface, (0, 200, 0), (center[0]-radius, center[1]-radius, radius*2, radius*2),
-                    end_angle, math.pi, 10)
+                    end_angle, math.pi * 1.15, 15)
     
     # Маленький зелёный маркер на дуге
-    marker_outer_x = center[0] + radius * math.cos(end_angle)
-    marker_outer_y = center[1] - radius * math.sin(end_angle)
-    marker_inner_x = center[0] + (radius - 70) * math.cos(end_angle)
-    marker_inner_y = center[1] - (radius - 70) * math.sin(end_angle)
-    pygame.draw.line(surface, (0, 200, 0), (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 8)
+    marker_outer_x = center[0] + (radius - 1)* math.cos(end_angle)
+    marker_outer_y = center[1] - (radius - 1) * math.sin(end_angle)
+    marker_inner_x = center[0] + (radius - 50) * math.cos(end_angle)
+    marker_inner_y = center[1] - (radius - 50) * math.sin(end_angle)
+    pygame.draw.line(surface, (0, 200, 0), (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 10)
 
   # Отметки скорости
   for mark in [0, 20, 40, 60]:
-    angle = math.pi + (mark / max_speed) * math.pi
+    angle = math.pi * 0.85 + (mark / max_speed) * math.pi * 1.3
     x_outer = center[0] + (radius + 5) * math.cos(angle)
     y_outer = center[1] + (radius + 5) * math.sin(angle)
-    x_inner = center[0] + (radius - 15) * math.cos(angle)
-    y_inner = center[1] + (radius - 15) * math.sin(angle)
-    pygame.draw.line(surface, (200, 200, 200), (x_inner, y_inner), (x_outer, y_outer), 2)
+    x_inner = center[0] + (radius - 20) * math.cos(angle)
+    y_inner = center[1] + (radius - 20) * math.sin(angle)
+    pygame.draw.line(surface, (60, 60, 60), (x_inner, y_inner), (x_outer, y_outer), 3)
 
     x = center[0] + radius * 1.2 * math.cos(angle)
     y = center[1] + radius * 1.2 * math.sin(angle)
@@ -287,7 +306,7 @@ def get_battery_color(level):
   elif level < 50:
     return (255, 165, 0)
   else:
-    return (0, 255, 0)
+    return (0, 200, 0)
 
 # Переменные для замера разгона 0-40 км/ч
 start_time = None
@@ -307,30 +326,30 @@ while running:
   screen.fill((254, 254, 254))
 
   # 1. Скорость полукруг
-  draw_speed_arc(screen, (WIDTH//2, 200), 150, data['speed'], 60)
-  draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), 190)
+  draw_speed_arc(screen, (WIDTH//2, 180), 150, data['speed'], 60)
+  draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), 180)
 
   # 2. Показатели мастер и слейв
   y_offset = 360
-  spacing_x = 150
+  spacing_x = 190
 
   for idx, side in enumerate(['slave', 'master']):
     x = (WIDTH//2 - spacing_x) if side == 'master' else (WIDTH//2 + spacing_x)
 
     # Рисуем рамку вокруг каждого контроллера
-    pygame.draw.rect(screen, (120, 120, 120), (x-60, y_offset-60, 120, 240), width=2, border_radius=10)
+    pygame.draw.rect(screen, (120, 120, 120), (x-70, y_offset-65, 140, 250), width=2, border_radius=20)
 
-    draw_text(screen, f"{int(data[side]['motor_current'])}A", font_small, (255, 0, 0), x, y_offset - 40)
-    draw_progress_bar(screen, x-40, y_offset - 10, 80, 10, data[side]['motor_current'], 100, (255, 0, 0))
+    draw_text(screen, f"{int(data[side]['motor_current'])}A", font_small, (255, 0, 0), x, y_offset - 35)
+    draw_progress_bar(screen, x-50, y_offset - 10, 100, 10, data[side]['motor_current'], 100, (255, 0, 0))
 
-    draw_text(screen, f"{int(data[side]['battery_current'])}A", font_small, (0, 0, 255), x, y_offset + 20)
-    draw_progress_bar(screen, x-40, y_offset + 50, 80, 10, data[side]['battery_current'], 25, (0, 0, 255))
+    draw_text(screen, f"{int(data[side]['battery_current'])}A", font_small, (0, 0, 255), x, y_offset + 25)
+    draw_progress_bar(screen, x-50, y_offset + 50, 100, 10, data[side]['battery_current'], 25, (0, 0, 255))
 
-    draw_text(screen, f"{int(data[side]['duty'])}%", font_small, (0, 0, 0), x, y_offset + 80)
-    draw_progress_bar(screen, x-40, y_offset + 110, 80, 10, data[side]['duty'], 100, (0, 0, 0))
+    draw_text(screen, f"{int(data[side]['duty'])}%", font_small, (0, 0, 0), x, y_offset + 85)
+    draw_progress_bar(screen, x-50, y_offset + 110, 100, 10, data[side]['duty'], 100, (0, 0, 0))
 
-    temp = font_small.render(f"{int(data[side]['temp'])}°C", True, (0, 255, 0))
-    screen.blit(temp, (x-25, 500))
+    temp = font_small.render(f"{int(data[side]['temp'])}°C", True, (0, 200, 0))
+    screen.blit(temp, (x-25, 490))
 
   # 3. Замер времени разгона 0-40 км/ч
   if ready and data['speed'] > 0:
@@ -360,38 +379,51 @@ while running:
     draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600)
 
   # 4. Вольтаж батареи и заряд
-  battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {int(data['battery_level'])}%", True, (0, 255, 255))
-  battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800))
+  boostDown = 10
+  battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {int(data['battery_level'])}%", True, (0, 100, 255))
+  battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800 + boostDown))
   screen.blit(battery_text, battery_rect)
 
   battery_color = get_battery_color(data['battery_level'])
-  draw_progress_bar(screen, battery_rect.right + 10, 800 - 10, 100, 20, data['battery_level'], 100, battery_color)
+  draw_progress_bar(screen, battery_rect.right + 10, 800 - 15 + boostDown, 120, 30, data['battery_level'], 100, battery_color)
 
   # 5. Одометр
-  draw_text_center(screen, f"{data['odometer']} км", font_small, (200, 200, 0), 860)
+  draw_text_center(screen, f"{data['odometer']} км", font_small, (170, 170, 0), 930)
   if trip_start_time is not None:
+    # поездка
+    trip_text_km = font_small.render(f"{trip_distance_km:.1f} км", True, (0, 0, 0))
+    trip_text_speed = font_small.render(f"{trip_avg_speed:.1f} км/ч", True, (0, 0, 0))
+    trip_km_rect = trip_text_km.get_rect(topright=(WIDTH - 20, 840))
+    trip_speed_rect = trip_text_speed.get_rect(topright=(WIDTH - 20, 875))
+
+    screen.blit(trip_text_km, trip_km_rect)
+    screen.blit(trip_text_speed, trip_speed_rect)
+
     trip_time = time.time() - trip_start_time
     minutes = int(trip_time // 60)
     seconds = int(trip_time % 60)
-    draw_text(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), 400, 860)
+    draw_text(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), 540, 930)
 
 
   # Отображение даты и времени
   now = datetime.datetime.now()
   weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
   months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
-  date_text = font_small.render(f"{weekdays[now.weekday()]} {now.day} {months[now.month-1]}", True, (0, 0, 0))
-  date_rect = date_text.get_rect(topleft=(20, 840 - 5))
+  date_week_text = font_small.render(f"{weekdays[now.weekday()]}", True, (0, 0, 0))
+  date_week_rect = date_week_text.get_rect(topleft=(20, 840))
+  screen.blit(date_week_text, date_week_rect)
+  date_text = font_small.render(f"{now.day} {months[now.month-1]}", True, (0, 0, 0))
+  date_rect = date_text.get_rect(topleft=(20, 875))
   screen.blit(date_text, date_rect)
 
   time_text = font_small.render(f"{now.hour:02d}:{now.minute:02d}", True, (0, 0, 0))
-  time_rect = time_text.get_rect(topleft=(20, 865 - 5))
+  time_rect = time_text.get_rect(topleft=(20, 930 - 20))
   screen.blit(time_text, time_rect)
 
   # Кнопка выключения
-  button_rect = pygame.Rect(20, 20, 60, 40)
-  pygame.draw.rect(screen, (100, 0, 0), button_rect, border_radius=10)
-  button_text = font_small.render("Выкл", True, (0, 0, 0))
+  button_rect = pygame.Rect(10, 10, 50, 50)
+  pygame.draw.rect(screen, (200, 200, 200), button_rect, border_radius=25)
+  button_text = font_small.render("X", True, (0, 0, 0))
   screen.blit(button_text, button_text.get_rect(center=button_rect.center))
 
   mouse = pygame.mouse.get_pos()
