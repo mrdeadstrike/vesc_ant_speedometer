@@ -15,12 +15,36 @@ trip_start_odometer = None
 trip_distance_km = 0.0
 trip_avg_speed = 0.0
 trip_time_start = time.time()
+
+saved_odometer = 0.0
+try:
+  with open("mainData.txt", "r") as f:
+    saved_odometer = float(f.read().strip())
+    print(f"Загружен одометр: {saved_odometer:.1f} км")
+except:
+  saved_odometer = 0.0
+
 data = {
   'speed': 0,
   'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
   'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
-  'battery_voltage': 0
+  'battery_voltage': 0,
+  'battery_level': 0,
+  'odometer': saved_odometer,
+  'trip_odometer': 0.0,
+  'trip_tick': 0,
+  'trip_speed_sum': 0.0,
+  'trip_avg_speed': 0.0
 }
+
+# Таблица для расчёта процента заряда батареи
+voltage_percent_table = [
+  (63.0, 100), (62.1, 95), (61.2, 90), (60.3, 85), (59.4, 80),
+  (58.5, 75), (57.6, 70), (56.7, 65), (55.8, 60), (54.9, 55),
+  (54.0, 50), (53.1, 45), (52.2, 40), (51.3, 35), (50.4, 30),
+  (49.5, 25), (48.6, 20), (47.7, 15), (46.8, 10), (45.9, 5),
+  (45.0, 0)
+]
 
 # Параметры колеса
 wheel_diameter_m = 0.28  # 280 мм = 0.28 м
@@ -153,6 +177,7 @@ def read_serial(
 
   while True:
     try:
+      #GET_INFO
       ser.write(packet_master)
       header = ser.read(2)
       if header and header[0] == 2:
@@ -169,23 +194,14 @@ def read_serial(
               wheel_rpm = rpm
               speed_mps = (wheel_rpm * wheel_circumference_m) / 60
               data['speed'] = int(speed_mps * 3.6)
-
-              # Расчёт дистанции и средней скорости поездки
-              if 'trip_odometer' not in data:
-                data['trip_odometer'] = 0.0
-              data['trip_odometer'] += (speed_mps * 0.05) / 1000  # м/с * время = м → км
-              trip_distance_km = data['trip_odometer']
-              elapsed_time = time.time() - trip_time_start
-              if elapsed_time > 0:
-                trip_avg_speed = trip_distance_km / (elapsed_time / 3600.0)
                 
               data['master']['motor_current'] = motor_current
               data['master']['battery_current'] = input_current
               data['master']['duty'] = duty_cycle
               data['master']['temp'] = mos_temp
               data['battery_voltage'] = volt
-              data['battery_level'] = battery_level
-              data['odometer'] = odometer
+              #data['battery_level'] = battery_level
+              #data['odometer'] = odometer
 
       time.sleep(0.1)#0.05
 
@@ -239,16 +255,6 @@ font_small = pygame.font.SysFont('Arial', 35)
 clock = pygame.time.Clock()
 
 
-
-data = {
-  'speed': 0,
-  'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
-  'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
-  'battery_voltage': 0,
-  'battery_level': 0,
-  'odometer': 0
-}
-
 def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
   pygame.draw.rect(surface, (200, 200, 200), (x, y, width, height), border_radius=10)
   fill_width = int(width * min(value / max_value, 1.0))
@@ -257,7 +263,7 @@ def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
 
 #TEMP
 #data['speed'] = 40
-#data['battery_level'] = 55
+#data['battery_voltage'] = 58.3
 #######
 
 def draw_speed_arc(surface, center, radius, speed, max_speed):
@@ -340,6 +346,13 @@ def get_battery_color(level):
     return (255, 165, 0)
   else:
     return (0, 200, 0)
+  
+def SaveData():
+  try:
+    with open("mainData.txt", "w") as f:
+      f.write(f"{data['odometer'] + data['trip_odometer']:.1f}")
+  except Exception as e:
+    print("Ошибка сохранения одометра:", e)
 
 # Переменные для замера разгона 0-40 км/ч
 start_time = None
@@ -430,15 +443,43 @@ while running:
   battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800 + boostDown))
   screen.blit(battery_text, battery_rect)
 
+  # Расчёт процента заряда батареи
+  voltages = [v for v, _ in voltage_percent_table]
+  percents = [p for _, p in voltage_percent_table]
+
+  if data['battery_voltage'] >= voltages[0]:
+    data['battery_level'] = 100
+  elif data['battery_voltage'] <= voltages[-1]:
+    data['battery_level'] = 0
+  else:
+    data['battery_level'] = 0
+    for i in range(len(voltages) - 1):
+      v_high, v_low = voltages[i], voltages[i + 1]
+      p_high, p_low = percents[i], percents[i + 1]
+      if v_high >= data['battery_voltage'] >= v_low:
+        # Линейная интерполяция между двумя ближайшими точками
+        ratio = (data['battery_voltage'] - v_low) / (v_high - v_low)
+        data['battery_level'] = int(p_low + ratio * (p_high - p_low))
+        break
+
   battery_color = get_battery_color(data['battery_level'])
   draw_progress_bar(screen, battery_rect.right + 10, 800 - 15 + boostDown, 120, 30, data['battery_level'], 100, battery_color)
 
   # 5. Одометр
-  draw_text_center(screen, f"{data['odometer']} км", font_small, (170, 170, 0), 930)
+  draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (170, 170, 0), 930)
   if trip_start_time is not None:
+    # Расчёт дистанции и средней скорости поездки
+    if 'trip_odometer' not in data:
+      data['trip_odometer'] = 0.0
+    elapsed_time = time.time() - trip_time_start
+    data['trip_speed_sum'] += data['speed']
+    data['trip_tick'] += 1
+    data['trip_avg_speed'] = data['trip_speed_sum'] / data['trip_tick']
+    data['trip_odometer'] = data['trip_avg_speed'] * (elapsed_time / 3600.0)
+
     # поездка
-    trip_text_km = font_small.render(f"{trip_distance_km:.1f} км", True, (0, 0, 0))
-    trip_text_speed = font_small.render(f"{trip_avg_speed:.1f} км/ч", True, (0, 0, 0))
+    trip_text_km = font_small.render(f"{data['trip_odometer']:.1f} км", True, (0, 0, 0))
+    trip_text_speed = font_small.render(f"{data['trip_avg_speed']:.1f} км/ч", True, (0, 0, 0))
     trip_km_rect = trip_text_km.get_rect(topright=(WIDTH - 20, 840))
     trip_speed_rect = trip_text_speed.get_rect(topright=(WIDTH - 20, 875))
 
@@ -467,19 +508,36 @@ while running:
   screen.blit(time_text, time_rect)
 
   # Кнопка выключения
-  button_rect = pygame.Rect(10, 10, 50, 50)
-  pygame.draw.rect(screen, (200, 200, 200), button_rect, border_radius=25)
-  button_text = font_small.render("X", True, (0, 0, 0))
+  button_rect = pygame.Rect(10, 10, 40, 40)
+  pygame.draw.rect(screen, (255, 95, 87), button_rect, border_radius=25)
+  button_text = font_small.render("", True, (0, 0, 0))
   screen.blit(button_text, button_text.get_rect(center=button_rect.center))
 
   mouse = pygame.mouse.get_pos()
   click = pygame.mouse.get_pressed()
   if button_rect.collidepoint(mouse) and click[0]:
     import os
+    print("OFF")
+    SaveData()
     pygame.quit()
     os.system('sudo shutdown now')
 
+  button_rect = pygame.Rect(70, 10, 40, 40)
+  pygame.draw.rect(screen, (255, 188, 46), button_rect, border_radius=25)
+  button_text = font_small.render("", True, (0, 0, 0))
+  screen.blit(button_text, button_text.get_rect(center=button_rect.center))
+
+  mouse = pygame.mouse.get_pos()
+  click = pygame.mouse.get_pressed()
+  if button_rect.collidepoint(mouse) and click[0]:
+    import os
+    print("quit")
+    SaveData()
+    pygame.quit()
+
   pygame.display.flip()
   clock.tick(30)
+
+  
 
 pygame.quit()
