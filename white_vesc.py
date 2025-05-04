@@ -452,7 +452,7 @@ while running:
       draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600)
 
     # 4. Вольтаж батареи и заряд
-    boostDown = 10
+    boostDown = 100
     battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {int(data['battery_level'])}%", True, (0, 100, 255))
     battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800 + boostDown))
     screen.blit(battery_text, battery_rect)
@@ -494,8 +494,8 @@ while running:
       # поездка
       trip_text_km = font_small.render(f"{data['trip_odometer']:.1f} км", True, (0, 0, 0))
       trip_text_speed = font_small.render(f"{data['trip_avg_speed']:.1f} км/ч", True, (0, 0, 0))
-      trip_km_rect = trip_text_km.get_rect(topright=(WIDTH - 20, 840))
-      trip_speed_rect = trip_text_speed.get_rect(topright=(WIDTH - 20, 875))
+      trip_km_rect = trip_text_km.get_rect(topright=(WIDTH - 20, 840 + boostDown))
+      trip_speed_rect = trip_text_speed.get_rect(topright=(WIDTH - 20, 875 + boostDown))
 
       screen.blit(trip_text_km, trip_km_rect)
       screen.blit(trip_text_speed, trip_speed_rect)
@@ -503,7 +503,7 @@ while running:
       trip_time = time.time() - trip_start_time
       minutes = int(trip_time // 60)
       seconds = int(trip_time % 60)
-      draw_text(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), 540, 930)
+      draw_text(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), 540, 930 + boostDown)
 
 
     # Отображение даты и времени
@@ -511,14 +511,14 @@ while running:
     weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
     months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
     date_week_text = font_small.render(f"{weekdays[now.weekday()]}", True, (0, 0, 0))
-    date_week_rect = date_week_text.get_rect(topleft=(20, 840))
+    date_week_rect = date_week_text.get_rect(topleft=(20, 840 + boostDown))
     screen.blit(date_week_text, date_week_rect)
     date_text = font_small.render(f"{now.day} {months[now.month-1]}", True, (0, 0, 0))
-    date_rect = date_text.get_rect(topleft=(20, 875))
+    date_rect = date_text.get_rect(topleft=(20, 875 + boostDown))
     screen.blit(date_text, date_rect)
 
     time_text = font_small.render(f"{now.hour:02d}:{now.minute:02d}", True, (0, 0, 0))
-    time_rect = time_text.get_rect(topleft=(20, 930 - 20))
+    time_rect = time_text.get_rect(topleft=(20, 930 - 20 + boostDown))
     screen.blit(time_text, time_rect)
 
     # Кнопка выключения системы
