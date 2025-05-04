@@ -9,6 +9,29 @@ import time
 
 PACKET_INDEX_FOR_VESC = 47#4
 
+import platform
+import os
+
+IS_RASPBERY = False
+def is_raspberry_pi():
+  if platform.system() != "Linux":
+    return False
+  try:
+    with open("/proc/device-tree/model", "r") as f:
+      model = f.read().lower()
+    return "raspberry pi" in model
+  except:
+    return False
+
+if is_raspberry_pi():
+  print("✅ Это Raspberry Pi")
+  IS_RASPBERY = True
+elif platform.system() == "Darwin":
+  print("🍎 Это macOS (MacBook)")
+else:
+  print("🤔 Что-то другое")
+
+
 
 # Данные контроллеров
 trip_start_odometer = None
@@ -247,7 +270,7 @@ import time
 
 pygame.init()
 
-WIDTH, HEIGHT = 600, 955
+WIDTH, HEIGHT = 600, 1010
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('VESC Speedometer')
 
@@ -374,7 +397,8 @@ PAGE_NAME = "SPEEDOMETER"
 
 running = True
 #FULL_SCREEN
-screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+if IS_RASPBERY:
+  screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
 
 while running:
   for event in pygame.event.get():
@@ -530,7 +554,7 @@ while running:
 
     mouse = pygame.mouse.get_pos()
     click = pygame.mouse.get_pressed()
-    if button_rect.collidepoint(mouse) and click[0] and not block_touch:
+    if button_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
       if trip_start_time is None:
         trip_start_time = time.time()
 
@@ -552,7 +576,7 @@ while running:
 
     mouse = pygame.mouse.get_pos()
     click = pygame.mouse.get_pressed()
-    if button_rect.collidepoint(mouse) and click[0] and not block_touch:
+    if button_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
       if trip_start_time is None:
         trip_start_time = time.time()
     
@@ -573,7 +597,7 @@ while running:
 
     mouse = pygame.mouse.get_pos()
     click = pygame.mouse.get_pressed()
-    if button_rect.collidepoint(mouse) and click[0] and not block_touch:
+    if button_rect.collidepoint(mouse) and click[0] and not IS_RASPBERY:
       setDebugValues = not setDebugValues
       needSetValues = True
 
