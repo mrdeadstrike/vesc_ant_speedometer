@@ -34,8 +34,10 @@ data = {
   'trip_odometer': 0.0,
   'trip_tick': 0,
   'trip_speed_sum': 0.0,
-  'trip_avg_speed': 0.0
+  'trip_avg_speed': 0.0,
+  'trip_time': "00:00",
 }
+
 
 # Таблица для расчёта процента заряда батареи
 voltage_percent_table = [
@@ -254,17 +256,15 @@ font_medium = pygame.font.SysFont('Arial', 50)
 font_small = pygame.font.SysFont('Arial', 35)
 clock = pygame.time.Clock()
 
+setDebugValues = False
+needSetValues = False
+
 
 def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
   pygame.draw.rect(surface, (200, 200, 200), (x, y, width, height), border_radius=10)
   fill_width = int(width * min(value / max_value, 1.0))
   if fill_width > 0:
     pygame.draw.rect(surface, color, (x, y, fill_width, height), border_radius=10)
-
-#TEMP
-#data['speed'] = 40
-#data['battery_voltage'] = 58.3
-#######
 
 def draw_speed_arc(surface, center, radius, speed, max_speed):
   pygame.draw.arc(surface, (200, 200, 200), (center[0]-radius, center[1]-radius, radius*2, radius*2),
@@ -339,6 +339,11 @@ def draw_text(surface, text, font, color, x, y):
   rect = render.get_rect(center=(x, y))
   surface.blit(render, rect)
 
+def draw_text_left(surface, text, font, color, x, y):
+  render = font.render(text, True, color)
+  rect = render.get_rect(topleft=(x, y))
+  surface.blit(render, rect)
+
 def get_battery_color(level):
   if level < 25:
     return (255, 0, 0)
@@ -360,6 +365,11 @@ measured_time = None
 ready = True
 measuring = False
 trip_start_time = None
+timer_power_off = None
+
+full_off = False
+
+PAGE_NAME = "SPEEDOMETER"
 
 running = True
 while running:
@@ -371,169 +381,241 @@ while running:
 
   screen.fill((254, 254, 254))
 
-  # 1. Скорость полукруг
-  draw_speed_arc(screen, (WIDTH//2, 180), 150, data['speed'], 60)
-  draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), 180)
+  if PAGE_NAME == "SPEEDOMETER":
+    # 1. Скорость полукруг
+    draw_speed_arc(screen, (WIDTH//2, 180), 150, data['speed'], 60)
+    draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), 180)
 
-  # 2. Показатели контроллеров мастер и слейв
-  y_offset = 360
-  spacing_x = 190
+    # 2. Показатели контроллеров мастер и слейв
+    y_offset = 360
+    spacing_x = 190
 
-  summ_current = data['slave']['motor_current'] + data['master']['motor_current']
-  draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.2, 370), 80, summ_current, 200, (255, 0, 0))
-  summ_battery = data['slave']['battery_current'] + data['master']['battery_current']
-  draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.5, 370), 80, summ_battery, 50, (0, 0, 255))
-  average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
-  draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.8, 370), 80, average_duty, 100, (0, 0, 0))
+    summ_current = data['slave']['motor_current'] + data['master']['motor_current']
+    draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.2, 370), 80, summ_current, 200, (255, 0, 0))
+    summ_battery = data['slave']['battery_current'] + data['master']['battery_current']
+    draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.5, 370), 80, summ_battery, 50, (0, 0, 255))
+    average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
+    draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.8, 370), 80, average_duty, 100, (0, 0, 0))
 
-  for idx, side in enumerate(['slave', 'master']):
-    x = (WIDTH//2 - spacing_x) if side == 'master' else (WIDTH//2 + spacing_x)
+    for idx, side in enumerate(['slave', 'master']):
+      x = (WIDTH//2 - spacing_x) if side == 'master' else (WIDTH//2 + spacing_x)
 
-    # Рисуем рамку вокруг каждого контроллера
-    #pygame.draw.rect(screen, (120, 120, 120), (x-70, y_offset-65, 140, 250), width=2, border_radius=20)
+      # Рисуем рамку вокруг каждого контроллера
+      #pygame.draw.rect(screen, (120, 120, 120), (x-70, y_offset-65, 140, 250), width=2, border_radius=20)
 
-    #draw_text(screen, f"{int(data[side]['motor_current'])}A", font_small, (255, 0, 0), x, y_offset - 35)
-    #draw_progress_bar(screen, x-50, y_offset - 10, 100, 10, data[side]['motor_current'], 100, (255, 0, 0))
+      #draw_text(screen, f"{int(data[side]['motor_current'])}A", font_small, (255, 0, 0), x, y_offset - 35)
+      #draw_progress_bar(screen, x-50, y_offset - 10, 100, 10, data[side]['motor_current'], 100, (255, 0, 0))
 
-    #draw_text(screen, f"{int(data[side]['battery_current'])}A", font_small, (0, 0, 255), x, y_offset + 25)
-    #draw_progress_bar(screen, x-50, y_offset + 50, 100, 10, data[side]['battery_current'], 25, (0, 0, 255))
+      #draw_text(screen, f"{int(data[side]['battery_current'])}A", font_small, (0, 0, 255), x, y_offset + 25)
+      #draw_progress_bar(screen, x-50, y_offset + 50, 100, 10, data[side]['battery_current'], 25, (0, 0, 255))
 
-    #draw_text(screen, f"{int(data[side]['duty'])}%", font_small, (0, 0, 0), x, y_offset + 85)
-    #draw_progress_bar(screen, x-50, y_offset + 110, 100, 10, data[side]['duty'], 100, (0, 0, 0))
+      #draw_text(screen, f"{int(data[side]['duty'])}%", font_small, (0, 0, 0), x, y_offset + 85)
+      #draw_progress_bar(screen, x-50, y_offset + 110, 100, 10, data[side]['duty'], 100, (0, 0, 0))
 
-    temp = font_small.render(f"{int(data[side]['temp'])}°C", True, (0, 200, 0))
-    screen.blit(temp, (x-25, 450))
+      temp = font_small.render(f"{int(data[side]['temp'])}°C", True, (0, 200, 0))
+      screen.blit(temp, (x-25, 450))
 
-  # блокируем тач при движении
-  if data['speed'] > 0:
-    pass
-  else:
-    pass
+    # блокируем тач при движении
+    if data['speed'] > 0:
+      pass
+    else:
+      pass
 
-  # 3. Замер времени разгона 0-40 км/ч
-  if ready and data['speed'] > 0:
-    start_time = time.time()
-    ready = False
-    measuring = True
+    # 3. Замер времени разгона 0-40 км/ч
+    if ready and data['speed'] > 0:
+      start_time = time.time()
+      ready = False
+      measuring = True
 
-  if trip_start_time is None and data['speed'] > 10:
-    trip_start_time = time.time()
+    if trip_start_time is None and data['speed'] > 10:
+      trip_start_time = time.time()
 
-  if measuring and data['speed'] >= 40:
-    measured_time = time.time() - start_time
-    measuring = False
+    if measuring and data['speed'] >= 40:
+      measured_time = time.time() - start_time
+      measuring = False
 
-  if data['speed'] == 0:
-    start_time = None
-    measured_time = None
-    ready = True
-    measuring = False
+    if data['speed'] == 0:
+      start_time = None
+      measured_time = None
+      ready = True
+      measuring = False
 
-  if measuring:
-    current_elapsed = time.time() - start_time
-    draw_text_center(screen, f"Разгон: {current_elapsed:.2f} сек", font_medium, (0, 0, 0), 600)
-  elif measured_time is not None:
-    draw_text_center(screen, f"0-40: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600)
-  else:
-    draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600)
+    if measuring:
+      current_elapsed = time.time() - start_time
+      draw_text_center(screen, f"Разгон: {current_elapsed:.2f} сек", font_medium, (0, 0, 0), 600)
+    elif measured_time is not None:
+      draw_text_center(screen, f"0-40: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600)
+    else:
+      draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600)
 
-  # 4. Вольтаж батареи и заряд
-  boostDown = 10
-  battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {int(data['battery_level'])}%", True, (0, 100, 255))
-  battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800 + boostDown))
-  screen.blit(battery_text, battery_rect)
+    # 4. Вольтаж батареи и заряд
+    boostDown = 10
+    battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {int(data['battery_level'])}%", True, (0, 100, 255))
+    battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800 + boostDown))
+    screen.blit(battery_text, battery_rect)
 
-  # Расчёт процента заряда батареи
-  voltages = [v for v, _ in voltage_percent_table]
-  percents = [p for _, p in voltage_percent_table]
+    # Расчёт процента заряда батареи
+    voltages = [v for v, _ in voltage_percent_table]
+    percents = [p for _, p in voltage_percent_table]
 
-  if data['battery_voltage'] >= voltages[0]:
-    data['battery_level'] = 100
-  elif data['battery_voltage'] <= voltages[-1]:
-    data['battery_level'] = 0
-  else:
-    data['battery_level'] = 0
-    for i in range(len(voltages) - 1):
-      v_high, v_low = voltages[i], voltages[i + 1]
-      p_high, p_low = percents[i], percents[i + 1]
-      if v_high >= data['battery_voltage'] >= v_low:
-        # Линейная интерполяция между двумя ближайшими точками
-        ratio = (data['battery_voltage'] - v_low) / (v_high - v_low)
-        data['battery_level'] = int(p_low + ratio * (p_high - p_low))
-        break
+    if data['battery_voltage'] >= voltages[0]:
+      data['battery_level'] = 100
+    elif data['battery_voltage'] <= voltages[-1]:
+      data['battery_level'] = 0
+    else:
+      data['battery_level'] = 0
+      for i in range(len(voltages) - 1):
+        v_high, v_low = voltages[i], voltages[i + 1]
+        p_high, p_low = percents[i], percents[i + 1]
+        if v_high >= data['battery_voltage'] >= v_low:
+          # Линейная интерполяция между двумя ближайшими точками
+          ratio = (data['battery_voltage'] - v_low) / (v_high - v_low)
+          data['battery_level'] = int(p_low + ratio * (p_high - p_low))
+          break
 
-  battery_color = get_battery_color(data['battery_level'])
-  draw_progress_bar(screen, battery_rect.right + 10, 800 - 15 + boostDown, 120, 30, data['battery_level'], 100, battery_color)
+    battery_color = get_battery_color(data['battery_level'])
+    draw_progress_bar(screen, battery_rect.right + 10, 800 - 15 + boostDown, 120, 30, data['battery_level'], 100, battery_color)
 
-  # 5. Одометр
-  draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (170, 170, 0), 930)
-  if trip_start_time is not None:
-    # Расчёт дистанции и средней скорости поездки
-    if 'trip_odometer' not in data:
-      data['trip_odometer'] = 0.0
-    elapsed_time = time.time() - trip_time_start
-    data['trip_speed_sum'] += data['speed']
-    data['trip_tick'] += 1
-    data['trip_avg_speed'] = data['trip_speed_sum'] / data['trip_tick']
-    data['trip_odometer'] = data['trip_avg_speed'] * (elapsed_time / 3600.0)
+    # 5. Одометр
+    draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (170, 170, 0), 930)
+    if trip_start_time is not None:
+      # Расчёт дистанции и средней скорости поездки
+      if 'trip_odometer' not in data:
+        data['trip_odometer'] = 0.0
+      elapsed_time = time.time() - trip_time_start
+      data['trip_speed_sum'] += data['speed']
+      data['trip_tick'] += 1
+      data['trip_avg_speed'] = data['trip_speed_sum'] / data['trip_tick']
+      data['trip_odometer'] = data['trip_avg_speed'] * (elapsed_time / 3600.0)
 
-    # поездка
+      # поездка
+      trip_text_km = font_small.render(f"{data['trip_odometer']:.1f} км", True, (0, 0, 0))
+      trip_text_speed = font_small.render(f"{data['trip_avg_speed']:.1f} км/ч", True, (0, 0, 0))
+      trip_km_rect = trip_text_km.get_rect(topright=(WIDTH - 20, 840))
+      trip_speed_rect = trip_text_speed.get_rect(topright=(WIDTH - 20, 875))
+
+      screen.blit(trip_text_km, trip_km_rect)
+      screen.blit(trip_text_speed, trip_speed_rect)
+
+      trip_time = time.time() - trip_start_time
+      minutes = int(trip_time // 60)
+      seconds = int(trip_time % 60)
+      draw_text(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), 540, 930)
+
+
+    # Отображение даты и времени
+    now = datetime.datetime.now()
+    weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+    months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+    date_week_text = font_small.render(f"{weekdays[now.weekday()]}", True, (0, 0, 0))
+    date_week_rect = date_week_text.get_rect(topleft=(20, 840))
+    screen.blit(date_week_text, date_week_rect)
+    date_text = font_small.render(f"{now.day} {months[now.month-1]}", True, (0, 0, 0))
+    date_rect = date_text.get_rect(topleft=(20, 875))
+    screen.blit(date_text, date_rect)
+
+    time_text = font_small.render(f"{now.hour:02d}:{now.minute:02d}", True, (0, 0, 0))
+    time_rect = time_text.get_rect(topleft=(20, 930 - 20))
+    screen.blit(time_text, time_rect)
+
+    # Кнопка выключения системы
+    button_rect = pygame.Rect(10, 10, 40, 40)
+    pygame.draw.rect(screen, (255, 95, 87), button_rect, border_radius=25)
+    button_text = font_small.render("", True, (0, 0, 0))
+    screen.blit(button_text, button_text.get_rect(center=button_rect.center))
+
+    mouse = pygame.mouse.get_pos()
+    click = pygame.mouse.get_pressed()
+    if button_rect.collidepoint(mouse) and click[0]:
+      if trip_start_time is None:
+        trip_start_time = time.time()
+
+      full_off = True
+      PAGE_NAME = "TRIP_STAT"
+      trip_time = time.time() - trip_start_time
+      minutes = int(trip_time // 60)
+      seconds = int(trip_time % 60)
+      data['trip_time'] = f"{minutes:02d}:{seconds:02d}"
+      if timer_power_off is None:
+        timer_power_off = time.time()
+      SaveData()
+
+    # Кнопка выключения программы
+    button_rect = pygame.Rect(10, 70, 40, 40)
+    pygame.draw.rect(screen, (255, 188, 46), button_rect, border_radius=25)
+    button_text = font_small.render("", True, (0, 0, 0))
+    screen.blit(button_text, button_text.get_rect(center=button_rect.center))
+
+    mouse = pygame.mouse.get_pos()
+    click = pygame.mouse.get_pressed()
+    if button_rect.collidepoint(mouse) and click[0]:
+      if trip_start_time is None:
+        trip_start_time = time.time()
+    
+      PAGE_NAME = "TRIP_STAT"
+      trip_time = time.time() - trip_start_time
+      minutes = int(trip_time // 60)
+      seconds = int(trip_time % 60)
+      data['trip_time'] = f"{minutes:02d}:{seconds:02d}"
+      if timer_power_off is None:
+        timer_power_off = time.time()
+      SaveData()
+
+    # Кнопка отладочного включения показателей
+    button_rect = pygame.Rect(10, 130, 40, 40)
+    pygame.draw.rect(screen, (40, 200, 64), button_rect, border_radius=25)
+    button_text = font_small.render("", True, (0, 0, 0))
+    screen.blit(button_text, button_text.get_rect(center=button_rect.center))
+
+    mouse = pygame.mouse.get_pos()
+    click = pygame.mouse.get_pressed()
+    if button_rect.collidepoint(mouse) and click[0]:
+      setDebugValues = not setDebugValues
+      needSetValues = True
+
+    if needSetValues:
+      if setDebugValues:
+        data['speed'] = 40
+        data['battery_voltage'] = 58.3
+        data['master']['motor_current'] = 100
+        data['master']['battery_current'] = 25
+        data['master']['duty'] = 100
+      else:
+        data['speed'] = 0
+        data['battery_voltage'] = 0
+        data['master']['motor_current'] = 0
+        data['master']['battery_current'] = 0
+        data['master']['duty'] = 0
+      needSetValues = False
+
+  elif PAGE_NAME == "TRIP_STAT":
     trip_text_km = font_small.render(f"{data['trip_odometer']:.1f} км", True, (0, 0, 0))
     trip_text_speed = font_small.render(f"{data['trip_avg_speed']:.1f} км/ч", True, (0, 0, 0))
-    trip_km_rect = trip_text_km.get_rect(topright=(WIDTH - 20, 840))
-    trip_speed_rect = trip_text_speed.get_rect(topright=(WIDTH - 20, 875))
+    trip_km_rect = trip_text_km.get_rect(topright=(WIDTH - 20, 340))
+    trip_speed_rect = trip_text_speed.get_rect(topright=(WIDTH - 20, 375))
 
     screen.blit(trip_text_km, trip_km_rect)
     screen.blit(trip_text_speed, trip_speed_rect)
+    draw_text(screen, data['trip_time'], font_small, (0, 0, 0), WIDTH - 60, 430)
 
-    trip_time = time.time() - trip_start_time
-    minutes = int(trip_time // 60)
-    seconds = int(trip_time % 60)
-    draw_text(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), 540, 930)
+    draw_text_left(screen, "Пройденное расстояние: ", font_small, (100, 100, 100), 10, 340 - 2)
+    draw_text_left(screen, "Средняя скорость: ", font_small, (100, 100, 100), 10, 375 - 2)
+    draw_text_left(screen, "Время в пути: ", font_small, (100, 100, 100), 10, 410 - 2)
 
 
-  # Отображение даты и времени
-  now = datetime.datetime.now()
-  weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
-  months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
-  date_week_text = font_small.render(f"{weekdays[now.weekday()]}", True, (0, 0, 0))
-  date_week_rect = date_week_text.get_rect(topleft=(20, 840))
-  screen.blit(date_week_text, date_week_rect)
-  date_text = font_small.render(f"{now.day} {months[now.month-1]}", True, (0, 0, 0))
-  date_rect = date_text.get_rect(topleft=(20, 875))
-  screen.blit(date_text, date_rect)
 
-  time_text = font_small.render(f"{now.hour:02d}:{now.minute:02d}", True, (0, 0, 0))
-  time_rect = time_text.get_rect(topleft=(20, 930 - 20))
-  screen.blit(time_text, time_rect)
+    timer_off_t = f"До выключения: {15 - (time.time() - timer_power_off):.0f} сек"
+    timer_off = font_small.render(timer_off_t, True, (0, 0, 0))
+    draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 530)
 
-  # Кнопка выключения
-  button_rect = pygame.Rect(10, 10, 40, 40)
-  pygame.draw.rect(screen, (255, 95, 87), button_rect, border_radius=25)
-  button_text = font_small.render("", True, (0, 0, 0))
-  screen.blit(button_text, button_text.get_rect(center=button_rect.center))
+    if time.time() - timer_power_off > 15:
+      SaveData()
+      pygame.quit()
+      if full_off:
+        import os
+        print("OFF")
+        os.system('sudo shutdown now')
 
-  mouse = pygame.mouse.get_pos()
-  click = pygame.mouse.get_pressed()
-  if button_rect.collidepoint(mouse) and click[0]:
-    import os
-    print("OFF")
-    SaveData()
-    pygame.quit()
-    os.system('sudo shutdown now')
-
-  button_rect = pygame.Rect(70, 10, 40, 40)
-  pygame.draw.rect(screen, (255, 188, 46), button_rect, border_radius=25)
-  button_text = font_small.render("", True, (0, 0, 0))
-  screen.blit(button_text, button_text.get_rect(center=button_rect.center))
-
-  mouse = pygame.mouse.get_pos()
-  click = pygame.mouse.get_pressed()
-  if button_rect.collidepoint(mouse) and click[0]:
-    import os
-    print("quit")
-    SaveData()
-    pygame.quit()
 
   pygame.display.flip()
   clock.tick(30)
