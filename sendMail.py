@@ -2,7 +2,7 @@
 SMTP_SERVER = "smtp.mail.ru"
 SMTP_PORT = 465
 SENDER_EMAIL = "tagmeet@mail.ru"
-SENDER_PASSWORD = "xJhYSdv448js1Detwcsc"
+SENDER_PASSWORD = "iroyj31OCRP("
 RECEIVER_EMAIL = "ilua.pisar@gmail.com"
 FILENAME = "/home/dead/trip.mp4"
 
