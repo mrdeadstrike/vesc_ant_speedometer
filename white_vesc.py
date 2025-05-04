@@ -294,7 +294,12 @@ def draw_speed_arc(surface, center, radius, speed, max_speed):
                   -math.pi * 0.15, math.pi * 1.15, 15)
   end_angle = math.pi * 1.15 - (speed / max_speed) * math.pi * 1.3
   if speed > 0:
-    pygame.draw.arc(surface, (0, 200, 0), (center[0]-radius, center[1]-radius, radius*2, radius*2),
+    speedColor = (0, 200, 0)
+    av_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
+    if av_duty > 90:
+      speedColor = (200, 0, 0)
+
+    pygame.draw.arc(surface, speedColor, (center[0]-radius, center[1]-radius, radius*2, radius*2),
                     end_angle, math.pi * 1.15, 15)
     
     # Маленький зелёный маркер на дуге
@@ -302,7 +307,7 @@ def draw_speed_arc(surface, center, radius, speed, max_speed):
     marker_outer_y = center[1] - (radius - 1) * math.sin(end_angle)
     marker_inner_x = center[0] + (radius - 50) * math.cos(end_angle)
     marker_inner_y = center[1] - (radius - 50) * math.sin(end_angle)
-    pygame.draw.line(surface, (0, 200, 0), (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 10)
+    pygame.draw.line(surface, speedColor, (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 10)
 
   # Отметки скорости
   for mark in [0, 20, 40, 60]:
