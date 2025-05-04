@@ -20,10 +20,9 @@ def send_email_with_attachment():
   with open(FILENAME, 'rb') as f:
     file_data = f.read()
     msg.add_attachment(file_data, maintype='video', subtype='mp4', filename=FILENAME)
-
+  
   context = ssl.create_default_context()
-  with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as smtp:
-    smtp.starttls(context=context)
+  with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=3) as smtp:
     smtp.login(SENDER_EMAIL, SENDER_PASSWORD)
     smtp.send_message(msg)
 
