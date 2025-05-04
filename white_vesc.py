@@ -1,10 +1,15 @@
 import datetime
+import signal
+import socket
+import subprocess
 import pygame
 import threading
 import serial
 import struct
 import math
 import time
+
+import urllib
 
 
 PACKET_INDEX_FOR_VESC = 47#4
@@ -397,6 +402,8 @@ trip_start_time = None
 timer_power_off = None
 block_touch = False
 
+can_start_record = True
+
 full_off = False
 
 PAGE_NAME = "SPEEDOMETER"
@@ -412,6 +419,8 @@ while running:
       running = False
 
   screen.fill((254, 254, 254))
+
+  print(PAGE_NAME)
 
   if PAGE_NAME == "SPEEDOMETER":
     # 1. Скорость полукруг
@@ -597,17 +606,20 @@ while running:
         timer_power_off = time.time()
       SaveData()
 
-    # Кнопка отладочного включения показателей
-    #button_rect = pygame.Rect(10, 130, 40, 40)
-    #pygame.draw.rect(screen, (40, 200, 64), button_rect, border_radius=25)
-    #button_text = font_small.render("", True, (0, 0, 0))
-    #screen.blit(button_text, button_text.get_rect(center=button_rect.center))
+    # Кнопка начала записи
+    if can_start_record:
+      button_rect = pygame.Rect(10, 130, 40, 40)
+      pygame.draw.rect(screen, (40, 200, 64), button_rect, border_radius=25)
+      button_text = font_small.render("", True, (0, 0, 0))
+      screen.blit(button_text, button_text.get_rect(center=button_rect.center))
 
-    #mouse = pygame.mouse.get_pos()
-    #click = pygame.mouse.get_pressed()
-    #if button_rect.collidepoint(mouse) and click[0] and not IS_RASPBERY:
-    #  setDebugValues = not setDebugValues
-    #  needSetValues = True
+      mouse = pygame.mouse.get_pos()
+      click = pygame.mouse.get_pressed()
+      if button_rect.collidepoint(mouse) and click[0] and not IS_RASPBERY:
+        # Старт записи
+        can_start_record = False
+        recorder_proc = subprocess.Popen(["wf-recorder", "-f", "trip.mp4"])
+        print(">>> Запись началась")
 
     if False:#needSetValues:
       if setDebugValues:
@@ -646,6 +658,10 @@ while running:
     draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 530)
 
     if time.time() - timer_power_off > 15:
+      # Остановить запись
+      recorder_proc.send_signal(signal.SIGINT)
+      recorder_proc.wait()
+      print(">>> Запись остановлена")
       SaveData()
       pygame.quit()
       if full_off:
