@@ -24,12 +24,14 @@ def is_raspberry_pi():
     return False
 
 if is_raspberry_pi():
-  print("✅ Это Raspberry Pi")
+  #print("✅ Это Raspberry Pi")
   IS_RASPBERY = True
 elif platform.system() == "Darwin":
-  print("🍎 Это macOS (MacBook)")
+  pass
+  #print("🍎 Это macOS (MacBook)")
 else:
-  print("🤔 Что-то другое")
+  pass
+  #print("🤔 Что-то другое")
 
 
 
@@ -410,8 +412,6 @@ while running:
     if event.type == pygame.QUIT:
       running = False
 
-  # Здесь подставляй реальные данные в переменную data
-
   screen.fill((254, 254, 254))
 
   if PAGE_NAME == "SPEEDOMETER":
@@ -424,8 +424,12 @@ while running:
     spacing_x = 190
 
     summ_current = data['slave']['motor_current'] + data['master']['motor_current']
+    if summ_current > 200:
+      summ_current = 200
     draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.2, 370), 80, summ_current, 200, (255, 0, 0))
-    summ_battery = int((data['slave']['battery_current'] + data['master']['battery_current'] / 2))
+    summ_battery = int(((data['slave']['battery_current'] + data['master']['battery_current']) / 2))
+    if summ_battery > 50:
+      summ_battery = 50
     draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.5, 370), 80, summ_battery, 50, (0, 0, 255))
     average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
     draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.8, 370), 80, average_duty, 100, (0, 0, 0))
@@ -454,7 +458,7 @@ while running:
     else:
       block_touch = False
 
-    # 3. Замер времени разгона 0-40 км/ч
+    # 3. Замер времени разгона 0-60 км/ч
     if ready and data['speed'] > 0:
       start_time = time.time()
       ready = False
@@ -463,7 +467,7 @@ while running:
     if trip_start_time is None and data['speed'] > 10:
       trip_start_time = time.time()
 
-    if measuring and data['speed'] >= 40:
+    if measuring and data['speed'] >= 60:
       measured_time = time.time() - start_time
       measuring = False
 
@@ -477,7 +481,7 @@ while running:
       current_elapsed = time.time() - start_time
       draw_text_center(screen, f"Разгон: {current_elapsed:.2f} сек", font_medium, (0, 0, 0), 600)
     elif measured_time is not None:
-      draw_text_center(screen, f"0-40: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600)
+      draw_text_center(screen, f"0-60: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600)
     else:
       draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600)
 
@@ -539,7 +543,7 @@ while running:
     # Отображение даты и времени
     now = datetime.datetime.now()
     weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
-    months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+    months = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
     date_week_text = font_small.render(f"{weekdays[now.weekday()]}", True, (0, 0, 0))
     date_week_rect = date_week_text.get_rect(topleft=(20, 840 + boostDown))
     screen.blit(date_week_text, date_week_rect)
