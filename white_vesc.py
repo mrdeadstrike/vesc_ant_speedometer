@@ -590,18 +590,18 @@ while running:
       SaveData()
 
     # Кнопка отладочного включения показателей
-    button_rect = pygame.Rect(10, 130, 40, 40)
-    pygame.draw.rect(screen, (40, 200, 64), button_rect, border_radius=25)
-    button_text = font_small.render("", True, (0, 0, 0))
-    screen.blit(button_text, button_text.get_rect(center=button_rect.center))
+    #button_rect = pygame.Rect(10, 130, 40, 40)
+    #pygame.draw.rect(screen, (40, 200, 64), button_rect, border_radius=25)
+    #button_text = font_small.render("", True, (0, 0, 0))
+    #screen.blit(button_text, button_text.get_rect(center=button_rect.center))
 
-    mouse = pygame.mouse.get_pos()
-    click = pygame.mouse.get_pressed()
-    if button_rect.collidepoint(mouse) and click[0] and not IS_RASPBERY:
-      setDebugValues = not setDebugValues
-      needSetValues = True
+    #mouse = pygame.mouse.get_pos()
+    #click = pygame.mouse.get_pressed()
+    #if button_rect.collidepoint(mouse) and click[0] and not IS_RASPBERY:
+    #  setDebugValues = not setDebugValues
+    #  needSetValues = True
 
-    if needSetValues:
+    if False:#needSetValues:
       if setDebugValues:
         data['speed'] = 40
         data['battery_voltage'] = 58.3
