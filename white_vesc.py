@@ -617,8 +617,11 @@ while running:
       click = pygame.mouse.get_pressed()
       if button_rect.collidepoint(mouse) and click[0] and IS_RASPBERY:
         # Старт записи
+        filename = "trip.mp4"
+        if os.path.exists(filename):
+          os.remove(filename)
         can_start_record = False
-        recorder_proc = subprocess.Popen(["wf-recorder", "-f", "trip.mp4"])
+        recorder_proc = subprocess.Popen(["wf-recorder", "-f", filename])
         print(">>> Запись началась")
 
     if False:#needSetValues:
@@ -658,10 +661,11 @@ while running:
     draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 530)
 
     if time.time() - timer_power_off > 15:
-      # Остановить запись
-      recorder_proc.send_signal(signal.SIGINT)
-      recorder_proc.wait()
-      print(">>> Запись остановлена")
+      if not can_start_record:
+        # Остановить запись
+        recorder_proc.send_signal(signal.SIGINT)
+        recorder_proc.wait()
+        print(">>> Запись остановлена")
       SaveData()
       pygame.quit()
       if full_off:
