@@ -615,7 +615,7 @@ while running:
 
       mouse = pygame.mouse.get_pos()
       click = pygame.mouse.get_pressed()
-      if button_rect.collidepoint(mouse) and click[0] and not IS_RASPBERY:
+      if button_rect.collidepoint(mouse) and click[0] and IS_RASPBERY:
         # Старт записи
         can_start_record = False
         recorder_proc = subprocess.Popen(["wf-recorder", "-f", "trip.mp4"])
