@@ -372,6 +372,9 @@ full_off = False
 PAGE_NAME = "SPEEDOMETER"
 
 running = True
+#FULL_SCREEN
+screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+
 while running:
   for event in pygame.event.get():
     if event.type == pygame.QUIT:
