@@ -598,9 +598,10 @@ while running:
     screen.blit(trip_text_speed, trip_speed_rect)
     draw_text(screen, data['trip_time'], font_small, (0, 0, 0), WIDTH - 60, 430)
 
-    draw_text_left(screen, "Пройденное расстояние: ", font_small, (100, 100, 100), 10, 340 - 2)
-    draw_text_left(screen, "Средняя скорость: ", font_small, (100, 100, 100), 10, 375 - 2)
-    draw_text_left(screen, "Время в пути: ", font_small, (100, 100, 100), 10, 410 - 2)
+    draw_text_center(screen, "Статистика поездки:", font_small, (100, 100, 100), 280)
+    draw_text_left(screen, "Пройденное расстояние ", font_small, (100, 100, 100), 10, 340 - 2)
+    draw_text_left(screen, "Средняя скорость ", font_small, (100, 100, 100), 10, 375 - 2)
+    draw_text_left(screen, "Время в пути ", font_small, (100, 100, 100), 10, 410 - 2)
 
 
 
