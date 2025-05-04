@@ -48,7 +48,7 @@ except:
   saved_odometer = 0.0
 
 data = {
-  'speed': 0,
+  'speed': 0.0,
   'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
   'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
   'battery_voltage': 0,
@@ -218,7 +218,7 @@ def read_serial(
               rpm, input_current, duty_cycle, volt, motor_current, mos_temp, battery_level, odometer = parsed
               wheel_rpm = rpm
               speed_mps = (wheel_rpm * wheel_circumference_m) / 60
-              data['speed'] = int(speed_mps * 3.6)
+              data['speed'] = speed_mps * 3.6
                 
               data['master']['motor_current'] = motor_current
               data['master']['battery_current'] = input_current
@@ -416,7 +416,7 @@ while running:
 
   if PAGE_NAME == "SPEEDOMETER":
     # 1. Скорость полукруг
-    draw_speed_arc(screen, (WIDTH//2, 180), 150, data['speed'], 60)
+    draw_speed_arc(screen, (WIDTH//2, 180), 150, int(data['speed']), 60)
     draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), 180)
 
     # 2. Показатели контроллеров мастер и слейв
@@ -425,8 +425,8 @@ while running:
 
     summ_current = data['slave']['motor_current'] + data['master']['motor_current']
     draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.2, 370), 80, summ_current, 200, (255, 0, 0))
-    summ_battery = data['slave']['battery_current'] + data['master']['battery_current']
-    draw_arc(f"{int(summ_battery / 2)}A", screen, (WIDTH * 0.5, 370), 80, summ_battery, 50, (0, 0, 255))
+    summ_battery = int((data['slave']['battery_current'] + data['master']['battery_current'] / 2))
+    draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.5, 370), 80, summ_battery, 50, (0, 0, 255))
     average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
     draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.8, 370), 80, average_duty, 100, (0, 0, 0))
 
@@ -467,7 +467,7 @@ while running:
       measured_time = time.time() - start_time
       measuring = False
 
-    if data['speed'] == 0:
+    if int(data['speed']) == 0:
       start_time = None
       measured_time = None
       ready = True
