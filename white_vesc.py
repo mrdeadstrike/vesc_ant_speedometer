@@ -366,6 +366,7 @@ ready = True
 measuring = False
 trip_start_time = None
 timer_power_off = None
+block_touch = False
 
 full_off = False
 
@@ -420,9 +421,9 @@ while running:
 
     # блокируем тач при движении
     if data['speed'] > 0:
-      pass
+      block_touch = True
     else:
-      pass
+      block_touch = False
 
     # 3. Замер времени разгона 0-40 км/ч
     if ready and data['speed'] > 0:
@@ -452,7 +453,7 @@ while running:
       draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600)
 
     # 4. Вольтаж батареи и заряд
-    boostDown = 100
+    boostDown = 50
     battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {int(data['battery_level'])}%", True, (0, 100, 255))
     battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800 + boostDown))
     screen.blit(battery_text, battery_rect)
@@ -480,7 +481,7 @@ while running:
     draw_progress_bar(screen, battery_rect.right + 10, 800 - 15 + boostDown, 120, 30, data['battery_level'], 100, battery_color)
 
     # 5. Одометр
-    draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (170, 170, 0), 930)
+    draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (170, 170, 0), 930 + boostDown)
     if trip_start_time is not None:
       # Расчёт дистанции и средней скорости поездки
       if 'trip_odometer' not in data:
@@ -529,7 +530,7 @@ while running:
 
     mouse = pygame.mouse.get_pos()
     click = pygame.mouse.get_pressed()
-    if button_rect.collidepoint(mouse) and click[0]:
+    if button_rect.collidepoint(mouse) and click[0] and not block_touch:
       if trip_start_time is None:
         trip_start_time = time.time()
 
@@ -551,7 +552,7 @@ while running:
 
     mouse = pygame.mouse.get_pos()
     click = pygame.mouse.get_pressed()
-    if button_rect.collidepoint(mouse) and click[0]:
+    if button_rect.collidepoint(mouse) and click[0] and not block_touch:
       if trip_start_time is None:
         trip_start_time = time.time()
     
@@ -572,7 +573,7 @@ while running:
 
     mouse = pygame.mouse.get_pos()
     click = pygame.mouse.get_pressed()
-    if button_rect.collidepoint(mouse) and click[0]:
+    if button_rect.collidepoint(mouse) and click[0] and not block_touch:
       setDebugValues = not setDebugValues
       needSetValues = True
 
