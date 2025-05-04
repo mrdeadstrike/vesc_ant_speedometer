@@ -4,7 +4,7 @@ SMTP_PORT = 465
 SENDER_EMAIL = "tagmeet@mail.ru"
 SENDER_PASSWORD = "xJhYSdv448js1Detwcsc"
 RECEIVER_EMAIL = "ilua.pisar@gmail.com"
-FILENAME = "trip.mp4"
+FILENAME = "/home/dead/trip.mp4"
 
 from email.message import EmailMessage
 import smtplib
