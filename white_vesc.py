@@ -5,6 +5,8 @@ import serial
 import struct
 import math
 import time
+import subprocess
+import signal
 
 
 PACKET_INDEX_FOR_VESC = 47#4
@@ -406,6 +408,26 @@ running = True
 if IS_RASPBERY:
   screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
 
+# Получаем размер экрана автоматически
+width, height = screen.get_size()
+
+# Команда ffmpeg для захвата всего экрана
+ffmpeg_cmd = [
+  "ffmpeg",
+  "-y",
+  "-f", "x11grab",
+  "-s", f"{width}x{height}",
+  "-i", ":0.0",
+  "-r", "30",
+  "-c:v", "libx264",
+  "-preset", "ultrafast",
+  "trip_record.mp4"
+]
+
+if IS_RASPBERY:
+  # Запускаем ffmpeg
+  ffmpeg_proc = subprocess.Popen(ffmpeg_cmd)
+
 while running:
   for event in pygame.event.get():
     if event.type == pygame.QUIT:
@@ -646,6 +668,10 @@ while running:
     draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 530)
 
     if time.time() - timer_power_off > 15:
+      # Завершаем ffmpeg запись
+      ffmpeg_proc.send_signal(signal.SIGINT)
+      ffmpeg_proc.wait()
+
       SaveData()
       pygame.quit()
       if full_off:
