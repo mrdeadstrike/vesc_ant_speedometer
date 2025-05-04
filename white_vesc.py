@@ -406,7 +406,7 @@ PAGE_NAME = "SPEEDOMETER"
 running = True
 #FULL_SCREEN
 if IS_RASPBERY:
-  screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+  screen = pygame.display.set_mode((0, 0), pygame.NOFRAME)
 
 # Получаем размер экрана автоматически
 width, height = screen.get_size()
