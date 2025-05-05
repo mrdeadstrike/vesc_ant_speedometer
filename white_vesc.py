@@ -523,6 +523,7 @@ while running:
     draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (170, 170, 0), 930 + boostDown)
     if trip_start_time is not None:
       # Расчёт дистанции и средней скорости поездки
+      now = time.time()
       if 'trip_odometer' not in data:
         data['trip_odometer'] = 0.0
       
