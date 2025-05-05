@@ -302,7 +302,7 @@ def draw_speed_arc(surface, center, radius, speed, max_speed):
   if speed > 0:
     speedColor = (0, 200, 0)
     av_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
-    if av_duty > 90:
+    if av_duty > 85:
       speedColor = (200, 0, 0)
 
     pygame.draw.arc(surface, speedColor, (center[0]-radius, center[1]-radius, radius*2, radius*2),
