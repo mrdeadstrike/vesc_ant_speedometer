@@ -420,8 +420,6 @@ while running:
 
   screen.fill((254, 254, 254))
 
-  print(PAGE_NAME)
-
   if PAGE_NAME == "SPEEDOMETER":
     # 1. Скорость полукруг
     draw_speed_arc(screen, (WIDTH//2, 180), 150, int(data['speed']), 60)
@@ -527,11 +525,21 @@ while running:
       # Расчёт дистанции и средней скорости поездки
       if 'trip_odometer' not in data:
         data['trip_odometer'] = 0.0
+      
+      if 'last_time' not in data:
+        # Первый вызов — просто устанавливаем last_time, расстояние не увеличиваем
+        data['last_time'] = now
+      else:
+        # Вычисляем прошедшее время с последнего тика
+        delta_time = now - data['last_time']
+        data['last_time'] = now
+        # Обновляем одометр (расстояние), интегрируя скорость по времени
+        data['trip_odometer'] += data['speed'] * (delta_time / 3600.0)
+
       elapsed_time = time.time() - trip_time_start
       data['trip_speed_sum'] += data['speed']
       data['trip_tick'] += 1
       data['trip_avg_speed'] = data['trip_speed_sum'] / data['trip_tick']
-      data['trip_odometer'] = data['trip_avg_speed'] * (elapsed_time / 3600.0)
 
       # поездка
       trip_text_km = font_small.render(f"{data['trip_odometer']:.1f} км", True, (0, 0, 0))
