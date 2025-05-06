@@ -297,31 +297,32 @@ def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
 
 def draw_speed_arc(surface, center, radius, speed, max_speed):
   pygame.draw.arc(surface, (200, 200, 200), (center[0]-radius, center[1]-radius, radius*2, radius*2),
-                  -math.pi * 0.15, math.pi * 1.15, 15)
-  end_angle = math.pi * 1.15 - (speed / max_speed) * math.pi * 1.3
+                  -math.pi * 0.15, math.pi * 1.15, 20)
+  end_angle = math.pi * 1.15 - ((speed + 0.5) / max_speed) * math.pi * 1.3
   if speed > 0:
     speedColor = (0, 200, 0)
     av_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
     if av_duty > 85:
-      speedColor = (200, 0, 0)
+      speedColor = (255, 0, 0)
 
     pygame.draw.arc(surface, speedColor, (center[0]-radius, center[1]-radius, radius*2, radius*2),
-                    end_angle, math.pi * 1.15, 15)
+                    end_angle, math.pi * 1.15, 20)
     
+    end_angle = math.pi * 1.15 - ((speed - 0.5) / max_speed) * math.pi * 1.3
     # Маленький зелёный маркер на дуге
-    marker_outer_x = center[0] + (radius - 1)* math.cos(end_angle)
-    marker_outer_y = center[1] - (radius - 1) * math.sin(end_angle)
+    marker_outer_x = center[0] + (radius - 5)* math.cos(end_angle)
+    marker_outer_y = center[1] - (radius - 5) * math.sin(end_angle)
     marker_inner_x = center[0] + (radius - 50) * math.cos(end_angle)
     marker_inner_y = center[1] - (radius - 50) * math.sin(end_angle)
-    pygame.draw.line(surface, speedColor, (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 10)
+    pygame.draw.line(surface, speedColor, (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 15)
 
   # Отметки скорости
-  for mark in [0, 20, 40, 60]:
+  for mark in [0, 20, 40, 60, 80]:
     angle = math.pi * 0.85 + (mark / max_speed) * math.pi * 1.3
     x_outer = center[0] + (radius + 5) * math.cos(angle)
     y_outer = center[1] + (radius + 5) * math.sin(angle)
-    x_inner = center[0] + (radius - 20) * math.cos(angle)
-    y_inner = center[1] + (radius - 20) * math.sin(angle)
+    x_inner = center[0] + (radius - 25) * math.cos(angle)
+    y_inner = center[1] + (radius - 25) * math.sin(angle)
     pygame.draw.line(surface, (60, 60, 60), (x_inner, y_inner), (x_outer, y_outer), 3)
 
     x = center[0] + radius * 1.2 * math.cos(angle)
@@ -420,10 +421,11 @@ while running:
 
   screen.fill((254, 254, 254))
 
+  up_gap = 20
   if PAGE_NAME == "SPEEDOMETER":
     # 1. Скорость полукруг
-    draw_speed_arc(screen, (WIDTH//2, 180), 150, int(data['speed']), 60)
-    draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), 180)
+    draw_speed_arc(screen, (WIDTH//2, 180 + up_gap), 150, int(data['speed']), 80)
+    draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), 180 + up_gap)
 
     # 2. Показатели контроллеров мастер и слейв
     y_offset = 360
@@ -432,13 +434,13 @@ while running:
     summ_current = data['slave']['motor_current'] + data['master']['motor_current']
     if summ_current > 200:
       summ_current = 200
-    draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.2, 370), 80, summ_current, 200, (255, 0, 0))
+    draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.2, 370 + up_gap), 80, summ_current, 200, (255, 0, 0))
     summ_battery = int(((data['slave']['battery_current'] + data['master']['battery_current']) / 2))
     if summ_battery > 50:
       summ_battery = 50
-    draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.5, 370), 80, summ_battery, 50, (0, 0, 255))
+    draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.5, 370 + up_gap), 80, summ_battery, 50, (0, 0, 255))
     average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
-    draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.8, 370), 80, average_duty, 100, (0, 0, 0))
+    draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.8, 370 + up_gap), 80, average_duty, 100, (0, 0, 0))
 
     for idx, side in enumerate(['slave', 'master']):
       x = (WIDTH//2 - spacing_x) if side == 'master' else (WIDTH//2 + spacing_x)
@@ -456,7 +458,7 @@ while running:
       #draw_progress_bar(screen, x-50, y_offset + 110, 100, 10, data[side]['duty'], 100, (0, 0, 0))
 
       temp = font_small.render(f"{int(data[side]['temp'])}°C", True, (0, 200, 0))
-      screen.blit(temp, (x-25, 450))
+      screen.blit(temp, (x-25, 450 + up_gap))
 
     # блокируем тач при движении
     if data['speed'] > 0:
