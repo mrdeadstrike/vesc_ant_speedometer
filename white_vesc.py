@@ -288,7 +288,6 @@ clock = pygame.time.Clock()
 setDebugValues = False
 needSetValues = False
 
-
 def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
   pygame.draw.rect(surface, (200, 200, 200), (x, y, width, height), border_radius=10)
   fill_width = int(width * min(value / max_value, 1.0))
@@ -298,23 +297,23 @@ def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
 def draw_speed_arc(surface, center, radius, speed, max_speed):
   pygame.draw.arc(surface, (200, 200, 200), (center[0]-radius, center[1]-radius, radius*2, radius*2),
                   -math.pi * 0.15, math.pi * 1.15, 20)
-  end_angle = math.pi * 1.15 - ((speed + 0.5) / max_speed) * math.pi * 1.3
+  end_angle = math.pi * 1.15 - ((speed) / max_speed) * math.pi * 1.3
   if speed > 0:
     speedColor = (0, 200, 0)
     av_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
-    if av_duty > 85:
-      speedColor = (255, 0, 0)
+    if av_duty >= 85:
+     speedColor = (255, 0, 0)
 
     pygame.draw.arc(surface, speedColor, (center[0]-radius, center[1]-radius, radius*2, radius*2),
                     end_angle, math.pi * 1.15, 20)
     
-    end_angle = math.pi * 1.15 - ((speed - 0.5) / max_speed) * math.pi * 1.3
+    end_angle = math.pi * 1.15 - ((speed) / max_speed) * math.pi * 1.3
     # Маленький зелёный маркер на дуге
-    marker_outer_x = center[0] + (radius - 5)* math.cos(end_angle)
-    marker_outer_y = center[1] - (radius - 5) * math.sin(end_angle)
+    marker_outer_x = center[0] + (radius - 1)* math.cos(end_angle)
+    marker_outer_y = center[1] - (radius - 1) * math.sin(end_angle)
     marker_inner_x = center[0] + (radius - 50) * math.cos(end_angle)
     marker_inner_y = center[1] - (radius - 50) * math.sin(end_angle)
-    pygame.draw.line(surface, speedColor, (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 15)
+    pygame.draw.line(surface, speedColor, (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 10)
 
   # Отметки скорости
   for mark in [0, 20, 40, 60, 80]:
@@ -394,6 +393,17 @@ def SaveData():
   except Exception as e:
     print("Ошибка сохранения одометра:", e)
 
+def SetDebugValues():
+  #DEBUG_VISUAL_TEST
+  changeV = time.time() % 5 / 5
+
+  data['master']['motor_current'] = 200 * changeV
+  data['master']['battery_current'] = 100 * changeV
+  data['speed'] = 70 * changeV
+  data['master']['duty'] = 300 * changeV
+  if data['master']['duty'] > 200:
+    data['master']['duty'] = 200
+
 # Переменные для замера разгона 0-40 км/ч
 start_time = None
 measured_time = None
@@ -409,6 +419,9 @@ full_off = False
 
 PAGE_NAME = "SPEEDOMETER"
 
+miganie = False
+miganie_tick = 0
+
 running = True
 #FULL_SCREEN
 if IS_RASPBERY:
@@ -420,6 +433,15 @@ while running:
       running = False
 
   screen.fill((254, 254, 254))
+
+  #if miganie_tick > 3:
+  #  miganie = not miganie
+  #  miganie_tick = 0
+  #else:
+  #  miganie_tick += 1
+
+  if not IS_RASPBERY:
+    SetDebugValues()
 
   up_gap = 25
   if PAGE_NAME == "SPEEDOMETER":
@@ -441,6 +463,11 @@ while running:
     draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.5, 370 + up_gap), 80, summ_battery, 50, (0, 0, 255))
     average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
     draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.8, 370 + up_gap), 80, average_duty, 100, (0, 0, 0))
+
+    # Когда ослабление магнитного поля активно рисуем рамку
+    if average_duty >= 85:
+      pygame.draw.rect(screen, (255, 0, 0), (0, 0, WIDTH, HEIGHT), width=12, border_radius=0)
+
 
     for idx, side in enumerate(['slave', 'master']):
       x = (WIDTH//2 - spacing_x) if side == 'master' else (WIDTH//2 + spacing_x)
@@ -575,7 +602,7 @@ while running:
     screen.blit(time_text, time_rect)
 
     # Кнопка выключения системы
-    button_rect = pygame.Rect(10, 10, 40, 40)
+    button_rect = pygame.Rect(12, 12, 40, 40)
     pygame.draw.rect(screen, (255, 95, 87), button_rect, border_radius=25)
     button_text = font_small.render("", True, (0, 0, 0))
     screen.blit(button_text, button_text.get_rect(center=button_rect.center))
@@ -597,7 +624,7 @@ while running:
       SaveData()
 
     # Кнопка выключения программы
-    button_rect = pygame.Rect(10, 70, 40, 40)
+    button_rect = pygame.Rect(72, 12, 40, 40)
     pygame.draw.rect(screen, (255, 188, 46), button_rect, border_radius=25)
     button_text = font_small.render("", True, (0, 0, 0))
     screen.blit(button_text, button_text.get_rect(center=button_rect.center))
@@ -619,7 +646,7 @@ while running:
 
     # Кнопка начала записи
     if can_start_record:
-      button_rect = pygame.Rect(10, 130, 40, 40)
+      button_rect = pygame.Rect(132, 12, 40, 40)
       pygame.draw.rect(screen, (40, 200, 64), button_rect, border_radius=25)
       button_text = font_small.render("", True, (0, 0, 0))
       screen.blit(button_text, button_text.get_rect(center=button_rect.center))
@@ -634,21 +661,6 @@ while running:
         can_start_record = False
         recorder_proc = subprocess.Popen(["wf-recorder", "-f", filename])
         print(">>> Запись началась")
-
-    if False:#needSetValues:
-      if setDebugValues:
-        data['speed'] = 40
-        data['battery_voltage'] = 58.3
-        data['master']['motor_current'] = 100
-        data['master']['battery_current'] = 25
-        data['master']['duty'] = 100
-      else:
-        data['speed'] = 0
-        data['battery_voltage'] = 0
-        data['master']['motor_current'] = 0
-        data['master']['battery_current'] = 0
-        data['master']['duty'] = 0
-      needSetValues = False
 
   elif PAGE_NAME == "TRIP_STAT":
     trip_text_km = font_small.render(f"{data['trip_odometer']:.1f} км", True, (0, 0, 0))
@@ -665,13 +677,15 @@ while running:
     draw_text_left(screen, "Средняя скорость ", font_small, (100, 100, 100), 10, 375 - 2)
     draw_text_left(screen, "Время в пути ", font_small, (100, 100, 100), 10, 410 - 2)
 
+    sec_to_exit = 5
+    if full_off:
+      sec_to_exit = 15
 
-
-    timer_off_t = f"До выключения: {15 - (time.time() - timer_power_off):.0f} сек"
+    timer_off_t = f"До выключения: {sec_to_exit - (time.time() - timer_power_off):.0f} сек"
     timer_off = font_small.render(timer_off_t, True, (0, 0, 0))
     draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 530)
 
-    if time.time() - timer_power_off > 15:
+    if time.time() - timer_power_off > sec_to_exit:
       if not can_start_record:
         # Остановить запись
         recorder_proc.send_signal(signal.SIGINT)
