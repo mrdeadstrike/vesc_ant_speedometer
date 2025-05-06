@@ -421,7 +421,7 @@ while running:
 
   screen.fill((254, 254, 254))
 
-  up_gap = 20
+  up_gap = 25
   if PAGE_NAME == "SPEEDOMETER":
     # 1. Скорость полукруг
     draw_speed_arc(screen, (WIDTH//2, 180 + up_gap), 150, int(data['speed']), 80)
