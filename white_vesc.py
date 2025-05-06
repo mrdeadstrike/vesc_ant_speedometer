@@ -59,6 +59,7 @@ data = {
   'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
   'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
   'battery_voltage': 0,
+  'v_without_nagruzka': 0,
   'battery_level': 0,
   'odometer': saved_odometer,
   'trip_odometer': 0.0,
@@ -401,6 +402,7 @@ def SetDebugValues():
   data['master']['battery_current'] = 100 * changeV
   data['speed'] = 70 * changeV
   data['master']['duty'] = 300 * changeV
+  data['battery_voltage'] = 60 - 10 * changeV
   if data['master']['duty'] > 200:
     data['master']['duty'] = 200
 
@@ -522,31 +524,37 @@ while running:
 
     # 4. Вольтаж батареи и заряд
     boostDown = 50
-    battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {int(data['battery_level'])}%", True, (0, 100, 255))
+    # запоминаем вольтаж без нагрузки и рекуперации
+    if int(summ_current) == 0:
+      data['v_without_nagruzka'] = data['battery_voltage']
+      
+    battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {data['v_without_nagruzka']:.1f}V {int(data['battery_level'])}%", True, (0, 100, 255))
     battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800 + boostDown))
     screen.blit(battery_text, battery_rect)
 
     # Расчёт процента заряда батареи
-    voltages = [v for v, _ in voltage_percent_table]
-    percents = [p for _, p in voltage_percent_table]
+    if int(summ_current) == 0:
+      voltages = [v for v, _ in voltage_percent_table]
+      percents = [p for _, p in voltage_percent_table]
 
-    if data['battery_voltage'] >= voltages[0]:
-      data['battery_level'] = 100
-    elif data['battery_voltage'] <= voltages[-1]:
-      data['battery_level'] = 0
-    else:
-      data['battery_level'] = 0
-      for i in range(len(voltages) - 1):
-        v_high, v_low = voltages[i], voltages[i + 1]
-        p_high, p_low = percents[i], percents[i + 1]
-        if v_high >= data['battery_voltage'] >= v_low:
-          # Линейная интерполяция между двумя ближайшими точками
-          ratio = (data['battery_voltage'] - v_low) / (v_high - v_low)
-          data['battery_level'] = int(p_low + ratio * (p_high - p_low))
-          break
+      if data['battery_voltage'] >= voltages[0]:
+        data['battery_level'] = 100
+      elif data['battery_voltage'] <= voltages[-1]:
+        data['battery_level'] = 0
+      else:
+        data['battery_level'] = 0
+        for i in range(len(voltages) - 1):
+          v_high, v_low = voltages[i], voltages[i + 1]
+          p_high, p_low = percents[i], percents[i + 1]
+          if v_high >= data['battery_voltage'] >= v_low:
+            # Линейная интерполяция между двумя ближайшими точками
+            ratio = (data['battery_voltage'] - v_low) / (v_high - v_low)
+            data['battery_level'] = int(p_low + ratio * (p_high - p_low))
+            break
 
     battery_color = get_battery_color(data['battery_level'])
-    draw_progress_bar(screen, battery_rect.right + 10, 800 - 15 + boostDown, 120, 30, data['battery_level'], 100, battery_color)
+    #draw_arc(f"{int(data['battery_level'])}%", screen, (battery_rect.right + 10, 800 - 15 + boostDown), 80, average_duty, 100, (0, 0, 0))
+    draw_progress_bar(screen, battery_rect.right + 10, 800 - 15 + boostDown, 100, 30, data['battery_level'], 100, battery_color)
 
     # 5. Одометр
     draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (170, 170, 0), 930 + boostDown)
