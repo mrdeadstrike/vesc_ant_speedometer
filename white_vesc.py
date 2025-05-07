@@ -604,7 +604,7 @@ while running:
     #Температура всего
     temp_y = 330
     draw_text(screen, f"{int(data['slave']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.1, temp_y)
-    draw_text(screen, f"{int(data['master']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.2, temp_y)
+    draw_text(screen, f"{int(data['master']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
 
     draw_text(screen, f"{int(data['bms_temp']['mosfet_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.45, temp_y)
     draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.6, temp_y)
