@@ -276,14 +276,27 @@ threading.Thread(target=read_serial, daemon=True).start()
 ######### BMS READ ############
 def read_bms(
                 #port_name='/dev/tty.usbmodem3041', #MAC
-                port_name='/dev/ttyACM0', #Raspbery PI
-                baudrate=115200):
-  return
+                port_name='/dev/tty.usbserial-10', #Raspbery PI
+                baudrate=19200):
   try:
     ser = serial.Serial(port_name, baudrate, timeout=0.1)
   except Exception as e:
     print("Не удалось открыть порт:", e)
     return
+
+  while True:
+    ser.write(b'\x5A\x5A\x00\x00\x00\x00')
+    data = ser.read(140)
+
+    if len(data) != 140 or not data.startswith(b'\xAA\x55\xAA\xFF'):
+      print("❌ Некорректный ответ от BMS")
+      time.sleep(0.1)
+      continue
+
+    total_voltage = (data[4] << 8 | data[5]) * 0.1
+    print(f"🔋 Напряжение: {total_voltage:.1f} В")
+    time.sleep(0.1)
+
 
 threading.Thread(target=read_bms, daemon=True).start()
 
