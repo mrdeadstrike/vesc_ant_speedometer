@@ -69,6 +69,14 @@ data = {
   'trip_time': "00:00",
   'cells_v': [3.70, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.99, 4.10],
   'unit_diff': 0.4,
+  'bms_temp': {
+    'mosfet_temp': 0,
+    'balance_temp': 0,
+    'external_temp_0': 0,
+    'external_temp_1': 0,
+    'external_temp_2': 0,
+    'external_temp_3': 0,
+  }
 }
 
 
@@ -274,9 +282,23 @@ def read_serial(
 threading.Thread(target=read_serial, daemon=True).start()
 
 ######### BMS READ ############
+def parse_temperatures(data):
+  def to_temp(offset):
+    return (data[offset] << 8 | data[offset + 1])
+
+  return {
+    'mosfet_temp': to_temp(91),
+    'balance_temp': to_temp(93),
+    'external_temp_0': to_temp(95),
+    'external_temp_1': to_temp(97),
+    'external_temp_2': to_temp(99),
+    'external_temp_3': to_temp(101),
+  }
+
+
 def read_bms(
-                #port_name='/dev/tty.usbmodem3041', #MAC
-                port_name='/dev/tty.usbserial-10', #Raspbery PI
+                port_name='/dev/ttyUSB0', #Ubuntu
+                #port_name='/dev/ttyUSB0', #Raspbery PI
                 baudrate=19200):
   try:
     ser = serial.Serial(port_name, baudrate, timeout=0.1)
@@ -286,15 +308,40 @@ def read_bms(
 
   while True:
     ser.write(b'\x5A\x5A\x00\x00\x00\x00')
-    data = ser.read(140)
+    bms_data = ser.read(140)
 
-    if len(data) != 140 or not data.startswith(b'\xAA\x55\xAA\xFF'):
+    if len(bms_data) != 140 or not bms_data.startswith(b'\xAA\x55\xAA\xFF'):
       print("❌ Некорректный ответ от BMS")
       time.sleep(0.1)
       continue
 
-    total_voltage = (data[4] << 8 | data[5]) * 0.1
-    print(f"🔋 Напряжение: {total_voltage:.1f} В")
+    # Общий вольтаж: bms_data[4] и bms_data[5], шаг 0.1 В
+    total_voltage = (bms_data[4] << 8 | bms_data[5]) * 0.1
+
+    # Ток: bms_data[72] и bms_data[73], шаг 0.1 A, offset 30000
+    current_raw = (bms_data[72] << 8 | bms_data[73])
+    current = (current_raw - 30000) * 0.1
+
+    temp_info = parse_temperatures(bms_data)
+
+    # Вольтаж каждой ячейки: bms_data[6]..bms_data[69], по 2 байта на ячейку, шаг 1 мВ
+    cell_voltages = []
+    for i in range(15):  # для 15s
+      high = bms_data[6 + i * 2]
+      low = bms_data[6 + i * 2 + 1]
+      voltage = (high << 8 | low) * 0.001  # в В
+      cell_voltages.append(float(voltage))
+
+    bms___ = {
+      "total_voltage": total_voltage,
+      "current": current,
+      "cell_voltages": cell_voltages
+    }
+
+    data['cells_v'] = cell_voltages
+
+
+
     time.sleep(0.1)
 
 
@@ -447,7 +494,7 @@ def draw_cells_block(screen, startY):
 
     pygame.draw.rect(screen, cell_color, (x_shift + left_boost - 15, y_shift + 2, 150, 35), width=2, border_radius=5)
     draw_text(screen, f"{cell_ind + 1}", font_small, cell_index_color, x_shift + left_boost + 7, y_shift + 20)
-    draw_text_left(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 50, y_shift)
+    draw_text(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 80, y_shift + 20)
 
     if not is_left:
       y_shift += 40
