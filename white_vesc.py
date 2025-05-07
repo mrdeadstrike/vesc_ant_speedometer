@@ -323,6 +323,7 @@ def read_bms(
     current = (current_raw - 30000) * 0.1
 
     temp_info = parse_temperatures(bms_data)
+    data['bms_temp'] = temp_info
 
     # Вольтаж каждой ячейки: bms_data[6]..bms_data[69], по 2 байта на ячейку, шаг 1 мВ
     cell_voltages = []
