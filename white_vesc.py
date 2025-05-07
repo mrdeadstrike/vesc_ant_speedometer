@@ -589,34 +589,28 @@ while running:
     summ_current = data['slave']['motor_current'] + data['master']['motor_current']
     if summ_current > 200:
       summ_current = 200
-    draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.2, 370 + up_gap), 80, summ_current, 200, (255, 0, 0))
+    draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.9, 100 + up_gap), 80, summ_current, 200, (255, 0, 0))
     summ_battery = int(((data['slave']['battery_current'] + data['master']['battery_current']) / 2))
     if summ_battery > 50:
       summ_battery = 50
-    draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.5, 370 + up_gap), 80, summ_battery, 50, (0, 0, 255))
-    draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.8, 370 + up_gap), 80, average_duty, 100, (0, 0, 0))
+    draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.9, 220 + up_gap), 80, summ_battery, 50, (0, 0, 255))
+    draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.1, 220 + up_gap), 80, average_duty, 100, (0, 0, 0))
 
     # Когда ослабление магнитного поля активно рисуем рамку
     #if average_duty >= 85:
     #  pygame.draw.rect(screen, (255, 0, 0), (0, 0, WIDTH, HEIGHT), width=12, border_radius=0)
 
+    #Температура всего
+    temp_y = 330
+    draw_text(screen, f"{int(data['slave']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.1, temp_y)
+    draw_text(screen, f"{int(data['master']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.2, temp_y)
 
-    for idx, side in enumerate(['slave', 'master']):
-      x = (WIDTH//2 - spacing_x) if side == 'master' else (WIDTH//2 + spacing_x)
+    draw_text(screen, f"{int(data['bms_temp']['mosfet_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.45, temp_y)
+    draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.6, temp_y)
 
-      # Рисуем рамку вокруг каждого контроллера
-      #pygame.draw.rect(screen, (120, 120, 120), (x-70, y_offset-65, 140, 250), width=2, border_radius=20)
+    draw_text(screen, f"{int(data['bms_temp']['external_temp_0'])}°C", font_small, (0, 200, 0), WIDTH * 0.75, temp_y)
+    draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°C", font_small, (0, 200, 0), WIDTH * 0.9, temp_y)
 
-      #draw_text(screen, f"{int(data[side]['motor_current'])}A", font_small, (255, 0, 0), x, y_offset - 35)
-      #draw_progress_bar(screen, x-50, y_offset - 10, 100, 10, data[side]['motor_current'], 100, (255, 0, 0))
-
-      #draw_text(screen, f"{int(data[side]['battery_current'])}A", font_small, (0, 0, 255), x, y_offset + 25)
-      #draw_progress_bar(screen, x-50, y_offset + 50, 100, 10, data[side]['battery_current'], 25, (0, 0, 255))
-
-      #draw_text(screen, f"{int(data[side]['duty'])}%", font_small, (0, 0, 0), x, y_offset + 85)
-      #draw_progress_bar(screen, x-50, y_offset + 110, 100, 10, data[side]['duty'], 100, (0, 0, 0))
-
-      draw_text(screen, f"{int(data[side]['temp'])}°C", font_small, (0, 200, 0), x, 70 + up_gap)
 
     # блокируем тач при движении
     if data['speed'] > 0:
