@@ -67,6 +67,8 @@ data = {
   'trip_speed_sum': 0.0,
   'trip_avg_speed': 0.0,
   'trip_time': "00:00",
+  'cells_v': [3.70, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.99, 4.10],
+  'unit_diff': 0.4,
 }
 
 
@@ -194,6 +196,7 @@ def pack_packet_slave(payload):
   crc = struct.pack('>H', crc16_slave(payload))
   return start + length + payload + crc + end
 
+######### CONTROLLER READ ##########
 def read_serial(
                 #port_name='/dev/tty.usbmodem3041', #MAC
                 port_name='/dev/ttyACM0', #Raspbery PI
@@ -270,7 +273,21 @@ def read_serial(
 
 threading.Thread(target=read_serial, daemon=True).start()
 
-######## INTERFACE
+######### BMS READ ############
+def read_bms(
+                #port_name='/dev/tty.usbmodem3041', #MAC
+                port_name='/dev/ttyACM0', #Raspbery PI
+                baudrate=115200):
+  return
+  try:
+    ser = serial.Serial(port_name, baudrate, timeout=0.1)
+  except Exception as e:
+    print("Не удалось открыть порт:", e)
+    return
+
+threading.Thread(target=read_bms, daemon=True).start()
+
+######## INTERFACE ###########
 import pygame
 import math
 import time
@@ -379,6 +396,55 @@ def draw_text_left(surface, text, font, color, x, y):
   rect = render.get_rect(topleft=(x, y))
   surface.blit(render, rect)
 
+def draw_cells_block(screen, startY):
+  is_left = True
+  x_shift = 255
+  y_shift = startY
+
+  good_cell_index = 0
+  good_cell_max = 0
+  bad_cell_index = 0
+  bad_cell_min = 5
+  for i in range(len(data['cells_v'])):
+    cell_v = data['cells_v'][i]
+    if cell_v > good_cell_max:
+      good_cell_max = cell_v
+      good_cell_index = i
+    if cell_v < bad_cell_min:
+      bad_cell_min = cell_v
+      bad_cell_index = i
+
+  cell_ind = 0
+  for cell_v in data['cells_v']:
+    left_boost = 10
+    if not is_left:
+      left_boost = 190
+
+    cell_color = (200, 200, 200)
+    cell_index_color = (0, 0, 0)
+    cell_v_color = (150, 150, 150)
+    if cell_ind == good_cell_index:
+      cell_color = (0, 200, 0)
+      cell_index_color = cell_color
+      cell_v_color = cell_color
+    if cell_ind == bad_cell_index:
+      cell_color = (255, 0, 0)
+      cell_index_color = cell_color
+      cell_v_color = cell_color
+
+    pygame.draw.rect(screen, cell_color, (x_shift + left_boost - 15, y_shift + 2, 150, 35), width=2, border_radius=5)
+    draw_text(screen, f"{cell_ind + 1}", font_small, cell_index_color, x_shift + left_boost + 7, y_shift + 20)
+    draw_text_left(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 50, y_shift)
+
+    if not is_left:
+      y_shift += 40
+      
+    is_left = not is_left
+    cell_ind += 1
+  
+  data['unit_diff'] = good_cell_max - bad_cell_min
+
+
 def get_battery_color(level):
   if level < 25:
     return (255, 0, 0)
@@ -448,12 +514,17 @@ while running:
   up_gap = 25
   if PAGE_NAME == "SPEEDOMETER":
     # 1. Скорость полукруг
+    average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
+    speed_color = (0, 0, 0)
+    if average_duty >= 85:
+      speed_color = (255, 0, 0)
+
     draw_speed_arc(screen, (WIDTH//2, 180 + up_gap), 150, int(data['speed']), 80)
-    draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), 180 + up_gap)
+    draw_text_center(screen, f"{int(data['speed'])}", font_large, speed_color, 180 + up_gap)
 
     # 2. Показатели контроллеров мастер и слейв
     y_offset = 360
-    spacing_x = 190
+    spacing_x = 250
 
     summ_current = data['slave']['motor_current'] + data['master']['motor_current']
     if summ_current > 200:
@@ -463,12 +534,11 @@ while running:
     if summ_battery > 50:
       summ_battery = 50
     draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.5, 370 + up_gap), 80, summ_battery, 50, (0, 0, 255))
-    average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
     draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.8, 370 + up_gap), 80, average_duty, 100, (0, 0, 0))
 
     # Когда ослабление магнитного поля активно рисуем рамку
-    if average_duty >= 85:
-      pygame.draw.rect(screen, (255, 0, 0), (0, 0, WIDTH, HEIGHT), width=12, border_radius=0)
+    #if average_duty >= 85:
+    #  pygame.draw.rect(screen, (255, 0, 0), (0, 0, WIDTH, HEIGHT), width=12, border_radius=0)
 
 
     for idx, side in enumerate(['slave', 'master']):
@@ -486,8 +556,7 @@ while running:
       #draw_text(screen, f"{int(data[side]['duty'])}%", font_small, (0, 0, 0), x, y_offset + 85)
       #draw_progress_bar(screen, x-50, y_offset + 110, 100, 10, data[side]['duty'], 100, (0, 0, 0))
 
-      temp = font_small.render(f"{int(data[side]['temp'])}°C", True, (0, 200, 0))
-      screen.blit(temp, (x-25, 450 + up_gap))
+      draw_text(screen, f"{int(data[side]['temp'])}°C", font_small, (0, 200, 0), x, 70 + up_gap)
 
     # блокируем тач при движении
     if data['speed'] > 0:
@@ -514,23 +583,36 @@ while running:
       ready = True
       measuring = False
 
+    razg_boost = -105
     if measuring:
       current_elapsed = time.time() - start_time
-      draw_text_center(screen, f"Разгон: {current_elapsed:.2f} сек", font_medium, (0, 0, 0), 600)
+      draw_text_center(screen, f"Разгон: {current_elapsed:.2f} сек", font_medium, (0, 0, 0), 600 + razg_boost)
     elif measured_time is not None:
-      draw_text_center(screen, f"0-60: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600)
+      draw_text_center(screen, f"0-60: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600 + razg_boost)
     else:
-      draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600)
+      draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600 + razg_boost)
 
     # 4. Вольтаж батареи и заряд
     boostDown = 50
     # запоминаем вольтаж без нагрузки и рекуперации
     if int(summ_current) == 0:
       data['v_without_nagruzka'] = data['battery_voltage']
-      
-    battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {data['v_without_nagruzka']:.1f}V {int(data['battery_level'])}%", True, (0, 100, 255))
-    battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800 + boostDown))
-    screen.blit(battery_text, battery_rect)
+
+    voltage_down = (data['battery_voltage'] - data['v_without_nagruzka'])
+    voltage_down_color = (0, 200, 0)
+    if voltage_down < -5:
+      voltage_down_color = (255, 0, 0)
+    elif voltage_down < -2:
+      voltage_down_color = (255, 165, 0)
+    draw_text_left(screen, f"{voltage_down:.1f}V", font_medium, voltage_down_color, 20, 550)
+    draw_text_left(screen, f"{data['battery_voltage']:.1f}V", font_medium, (0, 100, 255), 20, 600)
+    draw_text_left(screen, f"{data['v_without_nagruzka']:.1f}V", font_medium, (0, 100, 255), 20, 650)
+
+    draw_cells_block(screen, 555)
+
+    #battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {data['v_without_nagruzka']:.1f}V {int(data['battery_level'])}%", True, (0, 100, 255))
+    #battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800 + boostDown))
+    #screen.blit(battery_text, battery_rect)
 
     # Расчёт процента заряда батареи
     if int(summ_current) == 0:
@@ -554,7 +636,11 @@ while running:
 
     battery_color = get_battery_color(data['battery_level'])
     #draw_arc(f"{int(data['battery_level'])}%", screen, (battery_rect.right + 10, 800 - 15 + boostDown), 80, average_duty, 100, (0, 0, 0))
-    draw_progress_bar(screen, battery_rect.right + 10, 800 - 15 + boostDown, 100, 30, data['battery_level'], 100, battery_color)
+    draw_progress_bar(screen, 20, 680 - 15 + boostDown, 130, 40, data['battery_level'], 100, battery_color)
+    draw_text(screen, f"{int(data['battery_level'])}%", font_small, (0, 0, 0), 90, 735)
+
+    draw_text(screen, f"* {(data['unit_diff']):.2f}V", font_small, (0, 0, 0), 90, 785)
+
 
     # 5. Одометр
     draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (170, 170, 0), 930 + boostDown)
