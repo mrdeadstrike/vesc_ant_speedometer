@@ -612,6 +612,9 @@ while running:
     draw_text(screen, f"{int(data['bms_temp']['external_temp_0'])}°C", font_small, (0, 200, 0), WIDTH * 0.75, temp_y)
     draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°C", font_small, (0, 200, 0), WIDTH * 0.9, temp_y)
 
+    #ВОЛЬТАЖ
+    #ЯЧЕЙКИ
+    #РАЗГОН
 
     # блокируем тач при движении
     if data['speed'] > 0:
