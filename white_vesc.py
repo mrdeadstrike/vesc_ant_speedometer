@@ -67,7 +67,7 @@ data = {
   'trip_speed_sum': 0.0,
   'trip_avg_speed': 0.0,
   'trip_time': "00:00",
-  'cells_v': [3.701, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.99, 4.10],
+  'cells_v': [3.87, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.89, 3.899],
   'unit_diff': 0.4,
   'bms_temp': {
     'mosfet_temp': 0,
@@ -517,9 +517,9 @@ def get_battery_color(level):
     return (0, 200, 0)
   
 def get_unit_diff_color(volt):
-  if volt > 0.05:
+  if volt >= 0.05:
     return (255, 0, 0)
-  elif volt > 0.03:
+  elif volt >= 0.03:
     return (255, 165, 0)
   else:
     return (0, 200, 0)
