@@ -387,17 +387,17 @@ def draw_filled_arc(surface, color, center, radius, start_angle, end_angle, segm
 
 def draw_speed_arc(surface, center, radius, speed, max_speed, up_gap):
   av_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
-  if speed > 0:
-    if av_duty >= 85:
-      draw_filled_arc(surface, (255, 180, 180), center, radius, math.pi * 0.15, -math.pi * 1.15)
+  #if speed > 0:
+  #  if av_duty >= 85:
+  #    draw_filled_arc(surface, (255, 180, 180), center, radius, math.pi * 0.15, -math.pi * 1.15)
 
   pygame.draw.arc(surface, (200, 200, 200), (center[0]-radius, center[1]-radius, radius*2, radius*2),
                   -math.pi * 0.15, math.pi * 1.15, 20)
   end_angle = math.pi * 1.15 - ((speed) / max_speed) * math.pi * 1.3
   if speed > 0:
     speedColor = (0, 200, 0)
-    if av_duty >= 85:
-      speedColor = (255, 0, 0)
+    #if av_duty >= 85:
+    #  speedColor = (255, 0, 0)
 
     pygame.draw.arc(surface, speedColor, (center[0]-radius, center[1]-radius, radius*2, radius*2),
                     end_angle, math.pi * 1.15, 20)
@@ -602,11 +602,11 @@ while running:
 
   screen.fill((254, 254, 254))
 
-  #if miganie_tick > 3:
-  #  miganie = not miganie
-  #  miganie_tick = 0
-  #else:
-  #  miganie_tick += 1
+  if miganie_tick > 3:
+    miganie = not miganie
+    miganie_tick = 0
+  else:
+    miganie_tick += 1
 
   if not IS_RASPBERY:
     SetDebugValues()
@@ -630,6 +630,9 @@ while running:
       summ_current = 200
     
     up_gap += 20
+
+    if average_duty >= 85:
+      draw_progress_bar(screen, 15, 40 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (255, 0, 0))
     #draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.9, 100 + up_gap), 80, summ_current, 200, (255, 0, 0))
     draw_progress_bar(screen, WIDTH * 0.8, 40 + up_gap, 110, 15, int(summ_current), 200, str(int(summ_current)) + "A", (255, 0, 0))
     summ_battery = int(((data['slave']['battery_current'] + data['master']['battery_current']) / 2))
