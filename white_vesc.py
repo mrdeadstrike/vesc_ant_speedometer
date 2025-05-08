@@ -67,7 +67,7 @@ data = {
   'trip_speed_sum': 0.0,
   'trip_avg_speed': 0.0,
   'trip_time': "00:00",
-  'cells_v': [3.70, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.99, 4.10],
+  'cells_v': [3.701, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.99, 4.10],
   'unit_diff': 0.4,
   'bms_temp': {
     'mosfet_temp': 0,
@@ -697,7 +697,7 @@ while running:
     draw_progress_bar(screen, 20, 680 - 15 + boostDown, 130, 40, data['battery_level'], 100, battery_color)
     draw_text(screen, f"{int(data['battery_level'])}%", font_small, (0, 0, 0), 90, 735)
 
-    draw_text(screen, f"* {(data['unit_diff']):.2f}V", font_small, (0, 0, 0), 90, 785)
+    draw_text(screen, f"* {(data['unit_diff']):.3f}V", font_small, (0, 0, 0), 90, 785)
 
 
     # 5. Одометр
