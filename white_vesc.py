@@ -375,15 +375,29 @@ def draw_progress_bar(surface, x, y, width, height, value, max_value, text, colo
   if text != "":
     draw_text(surface, text, font_medium, color, x + width * 0.5, y + height + 30)
 
-def draw_speed_arc(surface, center, radius, speed, max_speed):
+def draw_filled_arc(surface, color, center, radius, start_angle, end_angle, segments=100):
+  points = [center]
+  for i in range(segments + 1):
+    angle = start_angle + (end_angle - start_angle) * i / segments
+    x = center[0] + radius * math.cos(angle)
+    y = center[1] + radius * math.sin(angle)
+    points.append((x, y))
+  pygame.draw.polygon(surface, color, points)
+  pygame.draw.rect(surface, color, (165, 150, 270, 120))
+
+def draw_speed_arc(surface, center, radius, speed, max_speed, up_gap):
+  av_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
+  if speed > 0:
+    if av_duty >= 85:
+      draw_filled_arc(surface, (255, 180, 180), center, radius, math.pi * 0.15, -math.pi * 1.15)
+
   pygame.draw.arc(surface, (200, 200, 200), (center[0]-radius, center[1]-radius, radius*2, radius*2),
                   -math.pi * 0.15, math.pi * 1.15, 20)
   end_angle = math.pi * 1.15 - ((speed) / max_speed) * math.pi * 1.3
   if speed > 0:
     speedColor = (0, 200, 0)
-    av_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
     if av_duty >= 85:
-     speedColor = (255, 0, 0)
+      speedColor = (255, 0, 0)
 
     pygame.draw.arc(surface, speedColor, (center[0]-radius, center[1]-radius, radius*2, radius*2),
                     end_angle, math.pi * 1.15, 20)
@@ -410,6 +424,13 @@ def draw_speed_arc(surface, center, radius, speed, max_speed):
     label = font_small.render(str(mark), True, (0, 0, 0))
     label_rect = label.get_rect(center=(x, y))
     surface.blit(label, label_rect)
+
+  # TEXT
+  text_color = (0, 0, 0)
+  #if av_duty >= 85:
+  #  text_color = (255, 255, 255)
+  draw_text_center(screen, f"{int(data['speed'])}", font_large, text_color, 180 + up_gap)
+
 
 def draw_arc(text, surface, center, radius, speed, max_speed, color):
   draw_text(screen, text, font_medium, color, center[0], center[1] - 5)
@@ -595,11 +616,10 @@ while running:
     # 1. Скорость полукруг
     average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
     speed_color = (0, 0, 0)
-    if average_duty >= 85:
-      speed_color = (255, 0, 0)
+    #if average_duty >= 85:
+    #  speed_color = (255, 0, 0)
 
-    draw_speed_arc(screen, (WIDTH//2, 180 + up_gap), 150, int(data['speed']), 80)
-    draw_text_center(screen, f"{int(data['speed'])}", font_large, speed_color, 180 + up_gap)
+    draw_speed_arc(screen, (WIDTH//2, 180 + up_gap), 150, int(data['speed']), 80, up_gap)
 
     # 2. Показатели контроллеров мастер и слейв
     y_offset = 360
