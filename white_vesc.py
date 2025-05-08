@@ -396,8 +396,8 @@ def draw_speed_arc(surface, center, radius, speed, max_speed, up_gap):
   end_angle = math.pi * 1.15 - ((speed) / max_speed) * math.pi * 1.3
   if speed > 0:
     speedColor = (0, 200, 0)
-    #if av_duty >= 85:
-    #  speedColor = (255, 0, 0)
+    if av_duty >= 85:
+      speedColor = (255, 0, 0)
 
     pygame.draw.arc(surface, speedColor, (center[0]-radius, center[1]-radius, radius*2, radius*2),
                     end_angle, math.pi * 1.15, 20)
