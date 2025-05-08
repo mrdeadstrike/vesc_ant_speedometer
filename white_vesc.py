@@ -461,7 +461,7 @@ def draw_text_left(surface, text, font, color, x, y):
 
 def draw_cells_block(screen, startY):
   is_left = True
-  x_shift = 255
+  x_shift = WIDTH * 0.425
   y_shift = startY
 
   good_cell_index = 0
@@ -512,6 +512,14 @@ def get_battery_color(level):
   if level < 25:
     return (255, 0, 0)
   elif level < 50:
+    return (255, 165, 0)
+  else:
+    return (0, 200, 0)
+  
+def get_unit_diff_color(volt):
+  if volt > 0.05:
+    return (255, 0, 0)
+  elif volt > 0.03:
     return (255, 165, 0)
   else:
     return (0, 200, 0)
@@ -592,6 +600,8 @@ while running:
     summ_current = data['slave']['motor_current'] + data['master']['motor_current']
     if summ_current > 200:
       summ_current = 200
+    
+    up_gap += 20
     #draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.9, 100 + up_gap), 80, summ_current, 200, (255, 0, 0))
     draw_progress_bar(screen, WIDTH * 0.8, 40 + up_gap, 110, 15, int(summ_current), 200, str(int(summ_current)) + "A", (255, 0, 0))
     summ_battery = int(((data['slave']['battery_current'] + data['master']['battery_current']) / 2))
@@ -609,26 +619,27 @@ while running:
     #  pygame.draw.rect(screen, (255, 0, 0), (0, 0, WIDTH, HEIGHT), width=12, border_radius=0)
 
     #Температура всего
-    temp_y = 330
-    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.45, 40), width=2, border_radius=5)
+    temp_y = 340
+    border_r = 10
+    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 41), width=2, border_radius=border_r)
     draw_text(screen, f"МК", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
     draw_text(screen, f"60°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
     draw_text(screen, f"60°C", font_small, (0, 200, 0), WIDTH * 0.4, temp_y)
 
     temp_y += 50
-    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.45, 40), width=2, border_radius=5)
+    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 41), width=2, border_radius=border_r)
     draw_text(screen, f"Vesc", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
     draw_text(screen, f"{int(data['slave']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
     draw_text(screen, f"{int(data['master']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.4, temp_y)
 
     temp_y -= 50
-    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 15, temp_y - 20, WIDTH * 0.45, 40), width=2, border_radius=5)
+    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 20, WIDTH * 0.46, 41), width=2, border_radius=border_r)
     draw_text(screen, f"М/Б", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
     draw_text(screen, f"{int(data['bms_temp']['mosfet_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.75, temp_y)
     draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.9, temp_y)
 
     temp_y += 50
-    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 15, temp_y - 20, WIDTH * 0.45, 40), width=2, border_radius=5)
+    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 20, WIDTH * 0.46, 41), width=2, border_radius=border_r)
     draw_text(screen, f"Бат", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
     draw_text(screen, f"{int(data['bms_temp']['external_temp_0'])}°C", font_small, (0, 200, 0), WIDTH * 0.75, temp_y)
     draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°C", font_small, (0, 200, 0), WIDTH * 0.9, temp_y)
@@ -637,42 +648,9 @@ while running:
     #ЯЧЕЙКИ
     #РАЗГОН
 
-    # блокируем тач при движении
-    if data['speed'] > 0:
-      block_touch = True
-    else:
-      block_touch = False
-
-    # 3. Замер времени разгона 0-60 км/ч
-    if ready and data['speed'] > 0:
-      start_time = time.time()
-      ready = False
-      measuring = True
-
-    if trip_start_time is None and data['speed'] > 10:
-      trip_start_time = time.time()
-
-    if measuring and data['speed'] >= 60:
-      measured_time = time.time() - start_time
-      measuring = False
-
-    if int(data['speed']) == 0:
-      start_time = None
-      measured_time = None
-      ready = True
-      measuring = False
-
-    razg_boost = -105
-    if measuring:
-      current_elapsed = time.time() - start_time
-      draw_text_center(screen, f"Разгон: {current_elapsed:.2f} сек", font_medium, (0, 0, 0), 600 + razg_boost)
-    elif measured_time is not None:
-      draw_text_center(screen, f"0-60: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600 + razg_boost)
-    else:
-      draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600 + razg_boost)
-
     # 4. Вольтаж батареи и заряд
     boostDown = 50
+    v_y = 460
     # запоминаем вольтаж без нагрузки и рекуперации
     if int(summ_current) == 0:
       data['v_without_nagruzka'] = data['battery_voltage']
@@ -683,11 +661,9 @@ while running:
       voltage_down_color = (255, 0, 0)
     elif voltage_down < -2:
       voltage_down_color = (255, 165, 0)
-    draw_text_left(screen, f"{voltage_down:.1f}V", font_medium, voltage_down_color, 20, 550)
-    draw_text_left(screen, f"{data['battery_voltage']:.1f}V", font_medium, (0, 100, 255), 20, 600)
-    draw_text_left(screen, f"{data['v_without_nagruzka']:.1f}V", font_medium, (0, 100, 255), 20, 650)
-
-    draw_cells_block(screen, 555)
+    draw_text(screen, f"{voltage_down:.1f}V", font_medium, voltage_down_color, WIDTH * 0.125, v_y)
+    draw_text(screen, f"{data['battery_voltage']:.1f}V", font_medium, (0, 100, 255), WIDTH * 0.38, v_y)
+    #draw_text_left(screen, f"{data['v_without_nagruzka']:.1f}V", font_medium, (0, 100, 255), WIDTH * 0.5, v_y)
 
     #battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {data['v_without_nagruzka']:.1f}V {int(data['battery_level'])}%", True, (0, 100, 255))
     #battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800 + boostDown))
@@ -715,10 +691,53 @@ while running:
 
     battery_color = get_battery_color(data['battery_level'])
     #draw_arc(f"{int(data['battery_level'])}%", screen, (battery_rect.right + 10, 800 - 15 + boostDown), 80, average_duty, 100, (0, 0, 0))
-    draw_progress_bar(screen, 20, 680 - 15 + boostDown, 130, 40, data['battery_level'], 100, "", battery_color)
-    draw_text(screen, f"{int(data['battery_level'])}%", font_small, (0, 0, 0), 90, 735)
+    draw_progress_bar(screen, WIDTH * 0.75, v_y - 15, 135, 30, data['battery_level'], 100, "", battery_color)
+    draw_text(screen, f"{int(data['battery_level'])}%", font_medium, (0, 0, 0), WIDTH * 0.625, v_y)
 
-    draw_text(screen, f"* {(data['unit_diff']):.3f}V", font_small, (0, 0, 0), 90, 785)
+    v_y += 61 + 10
+    pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 75), width=2, border_radius=border_r)
+    v_y -= 2
+    draw_text(screen, f"Diff", font_small, (200, 200, 200), WIDTH * 0.19, v_y)
+    v_y += 40
+    unit_diff_color = get_unit_diff_color(data['unit_diff'])
+    draw_text(screen, f"{(data['unit_diff']):.3f}V", font_small, unit_diff_color, WIDTH * 0.19, v_y)
+    v_y -= 59
+    draw_cells_block(screen, v_y)
+
+
+    # блокируем тач при движении
+    if data['speed'] > 0:
+      block_touch = True
+    else:
+      block_touch = False
+
+    # 3. Замер времени разгона 0-60 км/ч
+    if ready and data['speed'] > 0:
+      start_time = time.time()
+      ready = False
+      measuring = True
+
+    if trip_start_time is None and data['speed'] > 10:
+      trip_start_time = time.time()
+
+    if measuring and data['speed'] >= 60:
+      measured_time = time.time() - start_time
+      measuring = False
+
+    if int(data['speed']) == 0:
+      start_time = None
+      measured_time = None
+      ready = True
+      measuring = False
+
+    razg_boost = 265
+    if measuring:
+      current_elapsed = time.time() - start_time
+      draw_text_center(screen, f"Разгон: {current_elapsed:.2f} сек", font_medium, (0, 0, 0), 600 + razg_boost)
+    elif measured_time is not None:
+      draw_text_center(screen, f"0-60: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600 + razg_boost)
+    else:
+      draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600 + razg_boost)
 
 
     # 5. Одометр
