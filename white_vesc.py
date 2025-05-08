@@ -629,19 +629,19 @@ while running:
     #Температура всего
     temp_y = 340
     border_r = 10
-    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 41), width=2, border_radius=border_r)
+    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
     draw_text(screen, f"МК", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
     draw_text(screen, f"60°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
     draw_text(screen, f"60°C", font_small, (0, 200, 0), WIDTH * 0.4, temp_y)
 
     temp_y += 50
-    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 41), width=2, border_radius=border_r)
+    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
     draw_text(screen, f"Vesc", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
     draw_text(screen, f"{int(data['slave']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
     draw_text(screen, f"{int(data['master']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.4, temp_y)
 
     temp_y -= 50
-    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 20, WIDTH * 0.46, 41), width=2, border_radius=border_r)
+    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
     draw_text(screen, f"М/Б", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
     mos_color = get_battery_temp_color(int(data['bms_temp']['mosfet_temp']))
     draw_text(screen, f"{int(data['bms_temp']['mosfet_temp'])}°C", font_small, mos_color, WIDTH * 0.75, temp_y)
@@ -649,7 +649,7 @@ while running:
     draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°C", font_small, bal_color, WIDTH * 0.9, temp_y)
 
     temp_y += 50
-    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 20, WIDTH * 0.46, 41), width=2, border_radius=border_r)
+    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
     draw_text(screen, f"Бат", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
     bat_temp_1 = get_battery_temp_color(int(data['bms_temp']['external_temp_0']))
     draw_text(screen, f"{int(data['bms_temp']['external_temp_0'])}°C", font_small, bat_temp_1, WIDTH * 0.75, temp_y)
