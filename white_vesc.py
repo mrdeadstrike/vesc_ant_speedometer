@@ -357,7 +357,7 @@ pygame.init()
 
 WIDTH, HEIGHT = 600, 1010
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption('VESC Speedometer')
+pygame.display.set_caption('VESC ANT Speedometer')
 
 font_large = pygame.font.SysFont('Arial', 150)
 font_medium = pygame.font.SysFont('Arial', 50)
