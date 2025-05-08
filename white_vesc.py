@@ -524,6 +524,14 @@ def get_unit_diff_color(volt):
   else:
     return (0, 200, 0)
   
+def get_battery_temp_color(temp):
+  if temp >= 55:
+    return (255, 0, 0)
+  elif temp >= 40:
+    return (255, 165, 0)
+  else:
+    return (0, 200, 0)
+  
 def SaveData():
   try:
     with open("mainData.txt", "w") as f:
@@ -635,14 +643,18 @@ while running:
     temp_y -= 50
     pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 20, WIDTH * 0.46, 41), width=2, border_radius=border_r)
     draw_text(screen, f"М/Б", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
-    draw_text(screen, f"{int(data['bms_temp']['mosfet_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.75, temp_y)
-    draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.9, temp_y)
+    mos_color = get_battery_temp_color(int(data['bms_temp']['mosfet_temp']))
+    draw_text(screen, f"{int(data['bms_temp']['mosfet_temp'])}°C", font_small, mos_color, WIDTH * 0.75, temp_y)
+    bal_color = get_battery_temp_color(int(data['bms_temp']['balance_temp']))
+    draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°C", font_small, bal_color, WIDTH * 0.9, temp_y)
 
     temp_y += 50
     pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 20, WIDTH * 0.46, 41), width=2, border_radius=border_r)
     draw_text(screen, f"Бат", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
-    draw_text(screen, f"{int(data['bms_temp']['external_temp_0'])}°C", font_small, (0, 200, 0), WIDTH * 0.75, temp_y)
-    draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°C", font_small, (0, 200, 0), WIDTH * 0.9, temp_y)
+    bat_temp_1 = get_battery_temp_color(int(data['bms_temp']['external_temp_0']))
+    draw_text(screen, f"{int(data['bms_temp']['external_temp_0'])}°C", font_small, bat_temp_1, WIDTH * 0.75, temp_y)
+    bat_temp_2 = get_battery_temp_color(int(data['bms_temp']['external_temp_1']))
+    draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°C", font_small, bat_temp_2, WIDTH * 0.9, temp_y)
 
     #ВОЛЬТАЖ
     #ЯЧЕЙКИ
@@ -738,7 +750,6 @@ while running:
       draw_text_center(screen, f"0-60: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600 + razg_boost)
     else:
       draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600 + razg_boost)
-
 
     # 5. Одометр
     draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (170, 170, 0), 930 + boostDown)
