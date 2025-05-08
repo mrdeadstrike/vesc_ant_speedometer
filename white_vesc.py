@@ -367,11 +367,13 @@ clock = pygame.time.Clock()
 setDebugValues = False
 needSetValues = False
 
-def draw_progress_bar(surface, x, y, width, height, value, max_value, color):
+def draw_progress_bar(surface, x, y, width, height, value, max_value, text, color):
   pygame.draw.rect(surface, (200, 200, 200), (x, y, width, height), border_radius=10)
   fill_width = int(width * min(value / max_value, 1.0))
   if fill_width > 0:
     pygame.draw.rect(surface, color, (x, y, fill_width, height), border_radius=10)
+  if text != "":
+    draw_text(surface, text, font_medium, color, x + width * 0.5, y + height + 30)
 
 def draw_speed_arc(surface, center, radius, speed, max_speed):
   pygame.draw.arc(surface, (200, 200, 200), (center[0]-radius, center[1]-radius, radius*2, radius*2),
@@ -590,12 +592,17 @@ while running:
     summ_current = data['slave']['motor_current'] + data['master']['motor_current']
     if summ_current > 200:
       summ_current = 200
-    draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.9, 100 + up_gap), 80, summ_current, 200, (255, 0, 0))
+    #draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.9, 100 + up_gap), 80, summ_current, 200, (255, 0, 0))
+    draw_progress_bar(screen, WIDTH * 0.8, 40 + up_gap, 110, 15, int(summ_current), 200, str(int(summ_current)) + "A", (255, 0, 0))
     summ_battery = int(((data['slave']['battery_current'] + data['master']['battery_current']) / 2))
     if summ_battery > 50:
       summ_battery = 50
-    draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.9, 220 + up_gap), 80, summ_battery, 50, (0, 0, 255))
-    draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.1, 220 + up_gap), 80, average_duty, 100, (0, 0, 0))
+
+    draw_progress_bar(screen, WIDTH * 0.8, 130 + up_gap, 110, 15, int(summ_battery), 50, f"{int(summ_battery)}A", (0, 0, 255))
+    draw_progress_bar(screen, 15, 130 + up_gap, 110, 15, int(average_duty), 100, f"{int(average_duty)}%", (0, 0, 0))
+
+    #draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.9, 220 + up_gap), 80, summ_battery, 50, (0, 0, 255))
+    #draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.1, 220 + up_gap), 80, average_duty, 100, (0, 0, 0))
 
     # Когда ослабление магнитного поля активно рисуем рамку
     #if average_duty >= 85:
@@ -603,12 +610,26 @@ while running:
 
     #Температура всего
     temp_y = 330
-    draw_text(screen, f"{int(data['slave']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.1, temp_y)
-    draw_text(screen, f"{int(data['master']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
+    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.45, 40), width=2, border_radius=5)
+    draw_text(screen, f"МК", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
+    draw_text(screen, f"60°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
+    draw_text(screen, f"60°C", font_small, (0, 200, 0), WIDTH * 0.4, temp_y)
 
-    draw_text(screen, f"{int(data['bms_temp']['mosfet_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.45, temp_y)
-    draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.6, temp_y)
+    temp_y += 50
+    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.45, 40), width=2, border_radius=5)
+    draw_text(screen, f"Vesc", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
+    draw_text(screen, f"{int(data['slave']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
+    draw_text(screen, f"{int(data['master']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.4, temp_y)
 
+    temp_y -= 50
+    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 15, temp_y - 20, WIDTH * 0.45, 40), width=2, border_radius=5)
+    draw_text(screen, f"М/Б", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
+    draw_text(screen, f"{int(data['bms_temp']['mosfet_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.75, temp_y)
+    draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.9, temp_y)
+
+    temp_y += 50
+    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 15, temp_y - 20, WIDTH * 0.45, 40), width=2, border_radius=5)
+    draw_text(screen, f"Бат", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
     draw_text(screen, f"{int(data['bms_temp']['external_temp_0'])}°C", font_small, (0, 200, 0), WIDTH * 0.75, temp_y)
     draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°C", font_small, (0, 200, 0), WIDTH * 0.9, temp_y)
 
@@ -694,7 +715,7 @@ while running:
 
     battery_color = get_battery_color(data['battery_level'])
     #draw_arc(f"{int(data['battery_level'])}%", screen, (battery_rect.right + 10, 800 - 15 + boostDown), 80, average_duty, 100, (0, 0, 0))
-    draw_progress_bar(screen, 20, 680 - 15 + boostDown, 130, 40, data['battery_level'], 100, battery_color)
+    draw_progress_bar(screen, 20, 680 - 15 + boostDown, 130, 40, data['battery_level'], 100, "", battery_color)
     draw_text(screen, f"{int(data['battery_level'])}%", font_small, (0, 0, 0), 90, 735)
 
     draw_text(screen, f"* {(data['unit_diff']):.3f}V", font_small, (0, 0, 0), 90, 785)
