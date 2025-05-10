@@ -67,8 +67,8 @@ data = {
   'trip_speed_sum': 0.0,
   'trip_avg_speed': 0.0,
   'trip_time': "00:00",
-  'cells_v': [3.87, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.88, 3.89, 3.899],
-  'unit_diff': 0.4,
+  'cells_v': [3.99, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4.01],
+  'unit_diff': 0.0,
   'bms_temp': {
     'mosfet_temp': 0,
     'balance_temp': 0,
@@ -367,8 +367,11 @@ clock = pygame.time.Clock()
 setDebugValues = False
 needSetValues = False
 
-def draw_progress_bar(surface, x, y, width, height, value, max_value, text, color):
-  pygame.draw.rect(surface, (200, 200, 200), (x, y, width, height), border_radius=10)
+def draw_progress_bar(surface, x, y, width, height, value, max_value, text, color, active = True):
+  back_color = (200, 200, 200)
+  if not active:
+    back_color = (240, 240, 240)
+  pygame.draw.rect(surface, back_color, (x, y, width, height), border_radius=10)
   fill_width = int(width * min(value / max_value, 1.0))
   if fill_width > 0:
     pygame.draw.rect(surface, color, (x, y, fill_width, height), border_radius=10)
@@ -633,6 +636,9 @@ while running:
 
     if average_duty >= 85:
       draw_progress_bar(screen, 15, 40 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (255, 0, 0))
+    else:
+      draw_progress_bar(screen, 15, 40 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (240, 240, 240), False)
+
     #draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.9, 100 + up_gap), 80, summ_current, 200, (255, 0, 0))
     draw_progress_bar(screen, WIDTH * 0.8, 40 + up_gap, 110, 15, int(summ_current), 200, str(int(summ_current)) + "A", (255, 0, 0))
     summ_battery = int(((data['slave']['battery_current'] + data['master']['battery_current']) / 2))
@@ -654,8 +660,8 @@ while running:
     border_r = 10
     pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
     draw_text(screen, f"МК", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
-    draw_text(screen, f"60°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
-    draw_text(screen, f"60°C", font_small, (0, 200, 0), WIDTH * 0.4, temp_y)
+    draw_text(screen, f"?°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
+    draw_text(screen, f"?°C", font_small, (0, 200, 0), WIDTH * 0.4, temp_y)
 
     temp_y += 50
     pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
@@ -680,8 +686,6 @@ while running:
     draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°C", font_small, bat_temp_2, WIDTH * 0.9, temp_y)
 
     #ВОЛЬТАЖ
-    #ЯЧЕЙКИ
-    #РАЗГОН
 
     # 4. Вольтаж батареи и заряд
     boostDown = 50
@@ -696,7 +700,7 @@ while running:
       voltage_down_color = (255, 0, 0)
     elif voltage_down < -2:
       voltage_down_color = (255, 165, 0)
-    draw_text(screen, f"{voltage_down:.1f}V", font_medium, voltage_down_color, WIDTH * 0.125, v_y)
+    draw_text(screen, f"{voltage_down:.1f}V", font_medium, voltage_down_color, WIDTH * 0.1275, v_y)
     draw_text(screen, f"{data['battery_voltage']:.1f}V", font_medium, (0, 100, 255), WIDTH * 0.38, v_y)
     #draw_text_left(screen, f"{data['v_without_nagruzka']:.1f}V", font_medium, (0, 100, 255), WIDTH * 0.5, v_y)
 
