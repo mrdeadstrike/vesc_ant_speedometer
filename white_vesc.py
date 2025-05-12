@@ -333,6 +333,10 @@ def read_bms(
     temp_info = parse_temperatures(bms_data)
     data['bms_temp'] = temp_info
 
+    data['bms_current'] = current
+    data['power'] = total_voltage * current
+    data['bms_voltage'] = total_voltage
+
     # Вольтаж каждой ячейки: bms_data[6]..bms_data[69], по 2 байта на ячейку, шаг 1 мВ
     cell_voltages = []
     for i in range(15):  # для 15s
@@ -340,10 +344,6 @@ def read_bms(
       low = bms_data[6 + i * 2 + 1]
       voltage = (high << 8 | low) * 0.001  # в В
       cell_voltages.append(float(voltage))
-
-      data['bms_current'] = current
-      data['power'] = total_voltage * current
-      data['bms_voltage'] = total_voltage
 
     bms___ = {
       "total_voltage": total_voltage,
