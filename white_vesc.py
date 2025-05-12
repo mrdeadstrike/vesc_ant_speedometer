@@ -333,7 +333,7 @@ def read_bms(
     temp_info = parse_temperatures(bms_data)
     data['bms_temp'] = temp_info
 
-    data['bms_current'] = current
+    data['bms_current'] = current_raw
     data['power'] = total_voltage * current
     data['bms_voltage'] = total_voltage
 
