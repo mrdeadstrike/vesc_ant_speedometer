@@ -14,6 +14,9 @@ import urllib
 
 PACKET_INDEX_FOR_VESC = 47#4
 
+GREEN_COLOR = (0, 150, 0)
+ORANGE_COLOR = (230, 135, 0)
+
 import platform
 import os
 
@@ -398,7 +401,7 @@ def draw_speed_arc(surface, center, radius, speed, max_speed, up_gap):
                   -math.pi * 0.15, math.pi * 1.15, 20)
   end_angle = math.pi * 1.15 - ((speed) / max_speed) * math.pi * 1.3
   if speed > 0:
-    speedColor = (0, 200, 0)
+    speedColor = GREEN_COLOR
     if av_duty >= 85:
       speedColor = (255, 0, 0)
 
@@ -450,7 +453,7 @@ def draw_arc(text, surface, center, radius, speed, max_speed, color):
     marker_outer_y = center[1] - (radius - 1) * math.sin(end_angle)
     marker_inner_x = center[0] + (radius - 50) * math.cos(end_angle)
     marker_inner_y = center[1] - (radius - 50) * math.sin(end_angle)
-    pygame.draw.line(surface, (0, 200, 0), (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 10)
+    pygame.draw.line(surface, GREEN_COLOR, (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 10)
 
   return
   # Отметки скорости
@@ -511,7 +514,7 @@ def draw_cells_block(screen, startY):
     cell_index_color = (0, 0, 0)
     cell_v_color = (150, 150, 150)
     if cell_ind == good_cell_index:
-      cell_color = (0, 200, 0)
+      cell_color = GREEN_COLOR
       cell_index_color = cell_color
       cell_v_color = cell_color
     if cell_ind == bad_cell_index:
@@ -536,25 +539,25 @@ def get_battery_color(level):
   if level < 25:
     return (255, 0, 0)
   elif level < 50:
-    return (255, 165, 0)
+    return ORANGE_COLOR
   else:
-    return (0, 200, 0)
+    return GREEN_COLOR
   
 def get_unit_diff_color(volt):
   if volt >= 0.05:
     return (255, 0, 0)
   elif volt >= 0.03:
-    return (255, 165, 0)
+    return ORANGE_COLOR
   else:
-    return (0, 200, 0)
+    return GREEN_COLOR
   
 def get_battery_temp_color(temp):
   if temp >= 55:
     return (255, 0, 0)
   elif temp >= 40:
-    return (255, 165, 0)
+    return ORANGE_COLOR
   else:
-    return (0, 200, 0)
+    return GREEN_COLOR
   
 def SaveData():
   try:
@@ -660,14 +663,14 @@ while running:
     border_r = 10
     pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
     draw_text(screen, f"МК", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
-    draw_text(screen, f"?°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
-    draw_text(screen, f"?°C", font_small, (0, 200, 0), WIDTH * 0.4, temp_y)
+    draw_text(screen, f"?°C", font_small, GREEN_COLOR, WIDTH * 0.25, temp_y)
+    draw_text(screen, f"?°C", font_small, GREEN_COLOR, WIDTH * 0.4, temp_y)
 
     temp_y += 50
     pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
     draw_text(screen, f"Vesc", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
-    draw_text(screen, f"{int(data['slave']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.25, temp_y)
-    draw_text(screen, f"{int(data['master']['temp'])}°C", font_small, (0, 200, 0), WIDTH * 0.4, temp_y)
+    draw_text(screen, f"{int(data['slave']['temp'])}°C", font_small, GREEN_COLOR, WIDTH * 0.25, temp_y)
+    draw_text(screen, f"{int(data['master']['temp'])}°C", font_small, GREEN_COLOR, WIDTH * 0.4, temp_y)
 
     temp_y -= 50
     pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
@@ -695,11 +698,11 @@ while running:
       data['v_without_nagruzka'] = data['battery_voltage']
 
     voltage_down = (data['battery_voltage'] - data['v_without_nagruzka'])
-    voltage_down_color = (0, 200, 0)
+    voltage_down_color = GREEN_COLOR
     if voltage_down < -5:
       voltage_down_color = (255, 0, 0)
     elif voltage_down < -2:
-      voltage_down_color = (255, 165, 0)
+      voltage_down_color = ORANGE_COLOR
     draw_text(screen, f"{voltage_down:.1f}V", font_medium, voltage_down_color, WIDTH * 0.1275, v_y)
     draw_text(screen, f"{data['battery_voltage']:.1f}V", font_medium, (0, 100, 255), WIDTH * 0.38, v_y)
     #draw_text_left(screen, f"{data['v_without_nagruzka']:.1f}V", font_medium, (0, 100, 255), WIDTH * 0.5, v_y)
