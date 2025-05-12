@@ -303,6 +303,21 @@ def parse_temperatures(data):
     'external_temp_3': to_temp(101),
   }
 
+def parse_current(bms_data: bytes) -> float | None:
+  """
+  Извлекает ток из пакета данных BMS. Возвращает ток в амперах (float),
+  или None, если данные явно невалидные (например, 0x0000).
+  """
+  raw = (bms_data[108] << 8) | bms_data[109]
+
+  # Отсекаем заведомо мусорные значения
+  if raw == 0 or raw < 1000 or raw > 60000:
+    return 0
+
+  # ANT BMS: ток кодируется с offset = 30000, шаг = 0.1A
+  current = (raw - 30000) * 0.1
+  return round(current, 2)
+
 
 def read_bms(
                 port_name='/dev/ttyUSB0', #Ubuntu
@@ -325,16 +340,14 @@ def read_bms(
 
     # Общий вольтаж: bms_data[4] и bms_data[5], шаг 0.1 В
     total_voltage = (bms_data[4] << 8 | bms_data[5]) * 0.1
-
-    # Ток: bms_data[72] и bms_data[73], шаг 0.1 A, offset 30000
-    current_raw = (bms_data[72] << 8 | bms_data[73])
-    current = (current_raw - 30000) * 0.1
+    raw = int.from_bytes(bms_data[72:74], byteorder='big', signed=True)
+    current = raw * 0.1  # ← без смещения!
 
     temp_info = parse_temperatures(bms_data)
     data['bms_temp'] = temp_info
 
-    data['bms_current'] = current_raw
-    data['power'] = total_voltage * current
+    data['bms_current'] = current
+    data['power'] = int(total_voltage * current)
     data['bms_voltage'] = total_voltage
 
     # Вольтаж каждой ячейки: bms_data[6]..bms_data[69], по 2 байта на ячейку, шаг 1 мВ
@@ -352,8 +365,6 @@ def read_bms(
     }
 
     data['cells_v'] = cell_voltages
-
-    print(bms_data.hex())
 
 
 
