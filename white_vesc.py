@@ -334,7 +334,7 @@ def read_bms(
     data['bms_temp'] = temp_info
 
     data['bms_current'] = current_raw
-    data['power'] = total_voltage * current
+    data['power'] = f"{[hex(b) for b in bms_data[72:74]]}"#total_voltage * current
     data['bms_voltage'] = total_voltage
 
     # Вольтаж каждой ячейки: bms_data[6]..bms_data[69], по 2 байта на ячейку, шаг 1 мВ
@@ -672,7 +672,6 @@ while running:
     draw_progress_bar(screen, WIDTH * 0.8, 150 + up_gap, 110, 15, int(bms_current), 50, f"{int(bms_current)}A", GREEN_COLOR)
 
     draw_progress_bar(screen, 15, 150 + up_gap, 110, 15, int(average_duty), 100, f"{int(average_duty)}%", (0, 0, 0))
-
 
     draw_text_center(screen, str(data['power']) + "Вт", font_small, (0, 0, 0), 295)
     #data['bms_current'] = current
