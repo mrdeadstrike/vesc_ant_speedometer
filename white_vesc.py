@@ -334,7 +334,7 @@ def read_bms(
     data['bms_temp'] = temp_info
 
     data['bms_current'] = current_raw
-    data['power'] = f"{[hex(b) for b in bms_data[72:74]]}"#total_voltage * current
+    data['power'] = total_voltage * current
     data['bms_voltage'] = total_voltage
 
     # Вольтаж каждой ячейки: bms_data[6]..bms_data[69], по 2 байта на ячейку, шаг 1 мВ
@@ -352,6 +352,9 @@ def read_bms(
     }
 
     data['cells_v'] = cell_voltages
+
+    print(bms_data.hex())
+
 
 
 
