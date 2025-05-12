@@ -14,7 +14,7 @@ import urllib
 
 PACKET_INDEX_FOR_VESC = 47#4
 
-GREEN_COLOR = (0, 150, 0)
+GREEN_COLOR = (0, 175, 0)
 ORANGE_COLOR = (230, 135, 0)
 
 import platform
@@ -72,6 +72,8 @@ data = {
   'trip_time': "00:00",
   'cells_v': [3.99, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4.01],
   'unit_diff': 0.0,
+  'bad_cell_min': 0.0,
+  'bad_cell_index': 0,
   'bms_temp': {
     'mosfet_temp': 0,
     'balance_temp': 0,
@@ -79,7 +81,10 @@ data = {
     'external_temp_1': 0,
     'external_temp_2': 0,
     'external_temp_3': 0,
-  }
+  },
+  'bms_current': 0,
+  'power': 0,
+  'bms_voltage': 0
 }
 
 
@@ -336,6 +341,10 @@ def read_bms(
       voltage = (high << 8 | low) * 0.001  # в В
       cell_voltages.append(float(voltage))
 
+      data['bms_current'] = current
+      data['power'] = total_voltage * current
+      data['bms_voltage'] = total_voltage
+
     bms___ = {
       "total_voltage": total_voltage,
       "current": current,
@@ -375,7 +384,12 @@ def draw_progress_bar(surface, x, y, width, height, value, max_value, text, colo
   if not active:
     back_color = (240, 240, 240)
   pygame.draw.rect(surface, back_color, (x, y, width, height), border_radius=10)
-  fill_width = int(width * min(value / max_value, 1.0))
+
+  cur_val = value
+  if cur_val > max_value:
+    cur_val = max_value
+
+  fill_width = int(width * min(cur_val / max_value, 1.0))
   if fill_width > 0:
     pygame.draw.rect(surface, color, (x, y, fill_width, height), border_radius=10)
   if text != "":
@@ -533,6 +547,8 @@ def draw_cells_block(screen, startY):
     cell_ind += 1
   
   data['unit_diff'] = good_cell_max - bad_cell_min
+  data['bad_cell_min'] = bad_cell_min
+  data['bad_cell_index'] = bad_cell_index
 
 
 def get_battery_color(level):
@@ -640,18 +656,28 @@ while running:
     up_gap += 20
 
     if average_duty >= 85:
-      draw_progress_bar(screen, 15, 40 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (255, 0, 0))
+      draw_progress_bar(screen, 15, 60 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (255, 0, 0))
     else:
-      draw_progress_bar(screen, 15, 40 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (240, 240, 240), False)
+      draw_progress_bar(screen, 15, 60 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (240, 240, 240), False)
 
     #draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.9, 100 + up_gap), 80, summ_current, 200, (255, 0, 0))
-    draw_progress_bar(screen, WIDTH * 0.8, 40 + up_gap, 110, 15, int(summ_current), 200, str(int(summ_current)) + "A", (255, 0, 0))
+    draw_progress_bar(screen, WIDTH * 0.8, -30 + up_gap, 110, 15, int(summ_current), 200, str(int(summ_current)) + "A", (255, 0, 0))
     summ_battery = int(((data['slave']['battery_current'] + data['master']['battery_current']) / 2))
     if summ_battery > 50:
       summ_battery = 50
 
-    draw_progress_bar(screen, WIDTH * 0.8, 130 + up_gap, 110, 15, int(summ_battery), 50, f"{int(summ_battery)}A", (0, 0, 255))
-    draw_progress_bar(screen, 15, 130 + up_gap, 110, 15, int(average_duty), 100, f"{int(average_duty)}%", (0, 0, 0))
+    bms_current = data['bms_current']
+
+    draw_progress_bar(screen, WIDTH * 0.8, 60 + up_gap, 110, 15, int(summ_battery), 50, f"{int(summ_battery)}A", (0, 0, 255))
+    draw_progress_bar(screen, WIDTH * 0.8, 150 + up_gap, 110, 15, int(bms_current), 50, f"{int(bms_current)}A", GREEN_COLOR)
+
+    draw_progress_bar(screen, 15, 150 + up_gap, 110, 15, int(average_duty), 100, f"{int(average_duty)}%", (0, 0, 0))
+
+
+    draw_text_center(screen, str(data['power']) + "Вт", font_small, (0, 0, 0), 295)
+    #data['bms_current'] = current
+    #data['power'] = total_voltage * current
+    #data['bms_voltage'] = total_voltage
 
     #draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.9, 220 + up_gap), 80, summ_battery, 50, (0, 0, 255))
     #draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.1, 220 + up_gap), 80, average_duty, 100, (0, 0, 0))
@@ -741,12 +767,22 @@ while running:
     v_y += 61 + 10
     pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 75), width=2, border_radius=border_r)
     v_y -= 2
-    draw_text(screen, f"Diff", font_small, (200, 200, 200), WIDTH * 0.19, v_y)
+    weak_color = (200, 200, 200)
+    if data['bad_cell_min'] < 3.3 and miganie:
+      weak_color = (255, 0, 0)
+    draw_text(screen, f"Low {data['bad_cell_index'] + 1}", font_small, weak_color, WIDTH * 0.19, v_y)
     v_y += 40
+    draw_text(screen, f"{(data['bad_cell_min']):.3f}V", font_small, (0, 0, 0), WIDTH * 0.19, v_y)
+    v_y -= 59
+    draw_cells_block(screen, v_y)
+
+    v_y += (51) * 2
+    pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 75), width=2, border_radius=border_r)
+    draw_text(screen, f"Diff", font_small, (200, 200, 200), WIDTH * 0.19, v_y)
+    v_y += 38
     unit_diff_color = get_unit_diff_color(data['unit_diff'])
     draw_text(screen, f"{(data['unit_diff']):.3f}V", font_small, unit_diff_color, WIDTH * 0.19, v_y)
     v_y -= 59
-    draw_cells_block(screen, v_y)
 
 
     # блокируем тач при движении
