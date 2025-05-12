@@ -578,7 +578,7 @@ def SetDebugValues():
   if data['master']['duty'] > 200:
     data['master']['duty'] = 200
 
-# Переменные для замера разгона 0-40 км/ч
+# Переменные для замера разгона 0-60 км/ч
 start_time = None
 measured_time = None
 ready = True
@@ -586,6 +586,8 @@ measuring = False
 trip_start_time = None
 timer_power_off = None
 block_touch = False
+prev_speed = 0
+zamer_success = False
 
 can_start_record = True
 
@@ -753,24 +755,28 @@ while running:
     else:
       block_touch = False
 
+    if trip_start_time is None and data['speed'] > 10:
+      trip_start_time = time.time()
+
     # 3. Замер времени разгона 0-60 км/ч
     if ready and data['speed'] > 0:
       start_time = time.time()
       ready = False
       measuring = True
 
-    if trip_start_time is None and data['speed'] > 10:
-      trip_start_time = time.time()
-
     if measuring and data['speed'] >= 60:
       measured_time = time.time() - start_time
       measuring = False
+      zamer_success = True
 
-    if int(data['speed']) == 0:
+    if int(data['speed']) == 0 or (not zamer_success and prev_speed > int(data['speed'])):
       start_time = None
       measured_time = None
-      ready = True
+      if zamer_success:
+        ready = True
       measuring = False
+      zamer_success = False
+    prev_speed = int(data['speed'])
 
     razg_boost = 265
     if measuring:
