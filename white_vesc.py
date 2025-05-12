@@ -522,9 +522,9 @@ def draw_cells_block(screen, startY):
       cell_index_color = cell_color
       cell_v_color = cell_color
 
-    pygame.draw.rect(screen, cell_color, (x_shift + left_boost - 15, y_shift + 2, 150, 35), width=2, border_radius=5)
-    draw_text(screen, f"{cell_ind + 1}", font_small, cell_index_color, x_shift + left_boost + 7, y_shift + 20)
-    draw_text(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 80, y_shift + 20)
+    pygame.draw.rect(screen, cell_color, (x_shift + left_boost - 15, y_shift + 2, 150, 35), width=2, border_radius=10)
+    draw_text(screen, f"{cell_ind + 1}", font_small, cell_index_color, x_shift + left_boost + 12, y_shift + 20)
+    draw_text(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 85, y_shift + 20)
 
     if not is_left:
       y_shift += 40
@@ -782,7 +782,7 @@ while running:
       draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600 + razg_boost)
 
     # 5. Одометр
-    draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (170, 170, 0), 930 + boostDown)
+    draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (150, 150, 0), 930 + boostDown)
     if trip_start_time is not None:
       # Расчёт дистанции и средней скорости поездки
       now = time.time()
