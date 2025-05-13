@@ -382,13 +382,24 @@ def read_bms(
                 port_name='/dev/ttyUSB0', #Ubuntu
                 #port_name='/dev/ttyUSB0', #Raspbery PI
                 baudrate=19200):
-  try:
-    ser = serial.Serial(port_name, baudrate, timeout=0.1)
-  except Exception as e:
-    print("Не удалось открыть порт:", e)
-    return
+  global BMS_LOST
+  while True:
+    try:
+      ser = serial.Serial(port_name, baudrate, timeout=0.1)
+      print("bms port open")
+      BMS_LOST = False
+    except Exception as e:
+      BMS_LOST = True
+      print("Не удалось открыть порт:", e)
+      time.sleep(2)
+      continue
 
-  read_bms_data(ser)
+    try:
+      read_bms_data(ser)
+    except:
+      BMS_LOST = True
+      print("bms lost")
+      time.sleep(2)
 
 
 
@@ -800,25 +811,30 @@ while running:
     draw_progress_bar(screen, WIDTH * 0.75, v_y - 15, 135, 30, data['battery_level'], 100, "", battery_color)
     draw_text(screen, f"{int(data['battery_level'])}%", font_medium, (0, 0, 0), WIDTH * 0.625, v_y)
 
-    v_y += 61 + 10
-    pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 75), width=2, border_radius=border_r)
-    v_y -= 2
-    weak_color = (200, 200, 200)
-    if data['bad_cell_min'] < 3.3 and miganie:
-      weak_color = (255, 0, 0)
-    draw_text(screen, f"Low {data['bad_cell_index'] + 1}", font_small, weak_color, WIDTH * 0.19, v_y)
-    v_y += 40
-    draw_text(screen, f"{(data['bad_cell_min']):.3f}V", font_small, (0, 0, 0), WIDTH * 0.19, v_y)
-    v_y -= 59
-    draw_cells_block(screen, v_y)
+    if not BMS_LOST:
+      v_y += 61 + 10
+      pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 75), width=2, border_radius=border_r)
+      v_y -= 2
+      weak_color = (200, 200, 200)
+      if data['bad_cell_min'] < 3.3 and miganie:
+        weak_color = (255, 0, 0)
+      draw_text(screen, f"Low {data['bad_cell_index'] + 1}", font_small, weak_color, WIDTH * 0.19, v_y)
+      v_y += 40
+      draw_text(screen, f"{(data['bad_cell_min']):.3f}V", font_small, (0, 0, 0), WIDTH * 0.19, v_y)
+      v_y -= 59
+      draw_cells_block(screen, v_y)
 
-    v_y += (51) * 2
-    pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 75), width=2, border_radius=border_r)
-    draw_text(screen, f"Diff", font_small, (200, 200, 200), WIDTH * 0.19, v_y)
-    v_y += 38
-    unit_diff_color = get_unit_diff_color(data['unit_diff'])
-    draw_text(screen, f"{(data['unit_diff']):.3f}V", font_small, unit_diff_color, WIDTH * 0.19, v_y)
-    v_y -= 59
+      v_y += (51) * 2
+      pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 75), width=2, border_radius=border_r)
+      draw_text(screen, f"Diff", font_small, (200, 200, 200), WIDTH * 0.19, v_y)
+      v_y += 38
+      unit_diff_color = get_unit_diff_color(data['unit_diff'])
+      draw_text(screen, f"{(data['unit_diff']):.3f}V", font_small, unit_diff_color, WIDTH * 0.19, v_y)
+      v_y -= 59
+    else:
+      v_y += 61 + 10
+      pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 40), width=2, border_radius=border_r)
+      draw_text(screen, f"BMS Lost", font_small, (255, 0, 0), WIDTH * 0.19, v_y)
 
 
     # блокируем тач при движении
