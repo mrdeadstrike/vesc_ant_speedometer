@@ -15,7 +15,10 @@ import urllib
 PACKET_INDEX_FOR_VESC = 47#4
 
 GREEN_COLOR = (0, 175, 0)
+GREEN_LIGHT = (0, 210, 0)
 ORANGE_COLOR = (230, 135, 0)
+
+BMS_LOST = False
 
 import platform
 import os
@@ -331,16 +334,7 @@ def parse_current(bms_data: bytes) -> float | None:
   return round(current, 2)
 
 
-def read_bms(
-                port_name='/dev/ttyUSB0', #Ubuntu
-                #port_name='/dev/ttyUSB0', #Raspbery PI
-                baudrate=19200):
-  try:
-    ser = serial.Serial(port_name, baudrate, timeout=0.1)
-  except Exception as e:
-    print("Не удалось открыть порт:", e)
-    return
-
+def read_bms_data(ser):
   while True:
     ser.write(b'\x5A\x5A\x00\x00\x00\x00')
     bms_data = ser.read(140)
@@ -382,6 +376,20 @@ def read_bms(
 
 
     time.sleep(0.1)
+
+
+def read_bms(
+                port_name='/dev/ttyUSB0', #Ubuntu
+                #port_name='/dev/ttyUSB0', #Raspbery PI
+                baudrate=19200):
+  try:
+    ser = serial.Serial(port_name, baudrate, timeout=0.1)
+  except Exception as e:
+    print("Не удалось открыть порт:", e)
+    return
+
+  read_bms_data(ser)
+
 
 
 threading.Thread(target=read_bms, daemon=True).start()
@@ -441,7 +449,7 @@ def draw_speed_arc(surface, center, radius, speed, max_speed, up_gap):
                   -math.pi * 0.15, math.pi * 1.15, 20)
   end_angle = math.pi * 1.15 - ((speed) / max_speed) * math.pi * 1.3
   if speed > 0:
-    speedColor = GREEN_COLOR
+    speedColor = GREEN_LIGHT
     if av_duty >= 85:
       speedColor = (255, 0, 0)
 
