@@ -84,11 +84,23 @@ data = {
   },
   'bms_current': 0,
   'power': 0,
-  'bms_voltage': 0
+  'bms_voltage': 0,
+  'voltage_down': 0,
+}
+
+data_trip = {
+  'max_speed': 0,
+  'max_power': 0,
+  'best_time_0_60': 100,
+  'trip_start_bettery_perc': 0,
+  'max_voltage_down': 0,
+  'min_cell_v': 5,
+  'min_cell_v_index': 0,
+  'max_unit_diff': 0,
 }
 
 
-# Таблица для расчёта процента заряда батареи
+# Таблица для расчёта процента заряда батареи 15S
 voltage_percent_table = [
   (4.17 * 15, 100), (4.053 * 15, 90), (3.946 * 15, 80),
   (3.845 * 15, 70), (3.755 * 15, 60),
@@ -97,7 +109,7 @@ voltage_percent_table = [
 ]
 
 # Параметры колеса
-wheel_diameter_m = 0.28  # 280 мм = 0.28 м
+wheel_diameter_m = 0.28  # 280 мм = 0.28 м 11 дюймов
 wheel_circumference_m = math.pi * wheel_diameter_m
 pole_pairs = 15
 
@@ -386,8 +398,8 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('VESC ANT Speedometer')
 
 font_large = pygame.font.SysFont('Arial', 150)
-font_medium = pygame.font.SysFont('Arial', 50)
-font_small = pygame.font.SysFont('Arial', 35)
+font_medium = pygame.font.SysFont('Arial', 50, True)
+font_small = pygame.font.SysFont('Arial', 35, True)
 clock = pygame.time.Clock()
 
 setDebugValues = False
@@ -514,6 +526,11 @@ def draw_text_left(surface, text, font, color, x, y):
   rect = render.get_rect(topleft=(x, y))
   surface.blit(render, rect)
 
+def draw_text_right(surface, text, font, color, x, y):
+  render = font.render(text, True, color)
+  rect = render.get_rect(topright=(x, y))
+  surface.blit(render, rect)
+
 def draw_cells_block(screen, startY):
   is_left = True
   x_shift = WIDTH * 0.425
@@ -601,7 +618,7 @@ def SetDebugValues():
   changeV = time.time() % 5 / 5
 
   data['master']['motor_current'] = 200 * changeV
-  data['master']['battery_current'] = 100 * changeV
+  data['bms_current'] = 50 * changeV
   data['speed'] = 70 * changeV
   data['master']['duty'] = 300 * changeV
   data['battery_voltage'] = 60 - 10 * changeV
@@ -670,27 +687,24 @@ while running:
     up_gap += 20
 
     if average_duty >= 85:
-      draw_progress_bar(screen, 15, 60 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (255, 0, 0))
+      draw_progress_bar(screen, 15, 40 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (255, 0, 0))
     else:
-      draw_progress_bar(screen, 15, 60 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (240, 240, 240), False)
+      draw_progress_bar(screen, 15, 40 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (240, 240, 240), False)
 
     #draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.9, 100 + up_gap), 80, summ_current, 200, (255, 0, 0))
-    draw_progress_bar(screen, WIDTH * 0.8, -30 + up_gap, 110, 15, int(summ_current), 200, str(int(summ_current)) + "A", (255, 0, 0))
+    draw_progress_bar(screen, WIDTH * 0.8, 40 + up_gap, 110, 15, int(summ_current), 200, str(int(summ_current)) + "A", (255, 0, 0))
     summ_battery = int(((data['slave']['battery_current'] + data['master']['battery_current']) / 2))
     if summ_battery > 50:
       summ_battery = 50
 
     bms_current = data['bms_current']
 
-    draw_progress_bar(screen, WIDTH * 0.8, 60 + up_gap, 110, 15, int(summ_battery), 50, f"{int(summ_battery)}A", (0, 0, 255))
-    draw_progress_bar(screen, WIDTH * 0.8, 150 + up_gap, 110, 15, int(bms_current), 50, f"{int(bms_current)}A", GREEN_COLOR)
+    #draw_progress_bar(screen, WIDTH * 0.8, 60 + up_gap, 110, 15, int(summ_battery), 50, f"{int(summ_battery)}A", (0, 0, 255))
+    draw_progress_bar(screen, WIDTH * 0.8, 130 + up_gap, 110, 15, int(bms_current), 50, f"{int(bms_current)}A", (0, 0, 255))
 
-    draw_progress_bar(screen, 15, 150 + up_gap, 110, 15, int(average_duty), 100, f"{int(average_duty)}%", (0, 0, 0))
+    draw_progress_bar(screen, 15, 130 + up_gap, 110, 15, int(average_duty), 100, f"{int(average_duty)}%", (0, 0, 0))
 
     draw_text_center(screen, str(data['power']) + "Вт", font_small, (0, 0, 0), 295)
-    #data['bms_current'] = current
-    #data['power'] = total_voltage * current
-    #data['bms_voltage'] = total_voltage
 
     #draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.9, 220 + up_gap), 80, summ_battery, 50, (0, 0, 255))
     #draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.1, 220 + up_gap), 80, average_duty, 100, (0, 0, 0))
@@ -739,6 +753,7 @@ while running:
       data['v_without_nagruzka'] = data['battery_voltage']
 
     voltage_down = (data['battery_voltage'] - data['v_without_nagruzka'])
+    data['voltage_down'] = voltage_down
     voltage_down_color = GREEN_COLOR
     if voltage_down < -5:
       voltage_down_color = (255, 0, 0)
@@ -806,6 +821,7 @@ while running:
 
     if trip_start_time is None and data['speed'] > 10:
       trip_start_time = time.time()
+      data_trip['trip_start_bettery_perc'] = data['battery_level']
 
     # 3. Замер времени разгона 0-60 км/ч
     if ready and data['speed'] > 0:
@@ -911,6 +927,25 @@ while running:
         timer_power_off = time.time()
       SaveData()
 
+    # Обновляем данные за поездку
+    if data_trip['max_speed'] < data['speed']:
+      data_trip['max_speed'] = data['speed']
+    if data_trip['max_power'] < data['power']:
+      data_trip['max_power'] = data['power']
+
+    if zamer_success and data_trip['best_time_0_60'] > measured_time:
+      data_trip['best_time_0_60'] = measured_time
+
+    if data_trip['max_voltage_down'] > data['voltage_down']:
+      data_trip['max_voltage_down'] = data['voltage_down']
+
+    if data_trip['min_cell_v'] > data['bad_cell_min']:
+      data_trip['min_cell_v'] = data['bad_cell_min']
+      data_trip['min_cell_v_index'] = data['bad_cell_index']
+
+    if data_trip['max_unit_diff'] < data['unit_diff']:
+      data_trip['max_unit_diff'] = data['unit_diff']
+
     # Кнопка выключения программы
     button_rect = pygame.Rect(72, 12, 40, 40)
     pygame.draw.rect(screen, (255, 188, 46), button_rect, border_radius=25)
@@ -950,28 +985,70 @@ while running:
         recorder_proc = subprocess.Popen(["wf-recorder", "-f", filename])
         print(">>> Запись началась")
 
+  #################### PAGE TRIP_STAT ###########################
   elif PAGE_NAME == "TRIP_STAT":
-    trip_text_km = font_small.render(f"{data['trip_odometer']:.1f} км", True, (0, 0, 0))
-    trip_text_speed = font_small.render(f"{data['trip_avg_speed']:.1f} км/ч", True, (0, 0, 0))
-    trip_km_rect = trip_text_km.get_rect(topright=(WIDTH - 20, 340))
-    trip_speed_rect = trip_text_speed.get_rect(topright=(WIDTH - 20, 375))
+    y_trip_start = 80
+    draw_text_center(screen, "Статистика поездки:", font_small, (100, 100, 100), y_trip_start)
+    y_trip_start += 60
+    draw_text_left(screen, "Пройденное расстояние ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_right(screen, f"{data['trip_odometer']:.1f} км", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += 35
+    draw_text_left(screen, "Время в пути ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_right(screen, data['trip_time'], font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += 35
+    draw_text_left(screen, "Средняя скорость ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_right(screen, f"{data['trip_avg_speed']:.1f} км/ч", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += 35
+    draw_text_left(screen, "Максимальная скорость ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_right(screen, f"{int(data_trip['max_speed'])} км/ч", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += 35
+    draw_text_left(screen, "Лучшее время 0-60 ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_right(screen, f"{data_trip['best_time_0_60']:.2f} с", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += 35
+    draw_text_left(screen, "Максимальная мощность ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_right(screen, f"{int(data_trip['max_power'])} Вт", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += 35
+    draw_text_left(screen, "Потрачено заряда ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_right(screen, f"{int(data_trip['trip_start_bettery_perc'] - data['battery_level'])} %", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += 35
+    draw_text_left(screen, "Максимальная просадка ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_right(screen, f"{data_trip['max_voltage_down']:.1f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += 35
+    draw_text_left(screen, "Минимум V в ряду ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_right(screen, f"{data_trip['min_cell_v']:.3f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += 35
+    draw_text_left(screen, "Слабейший ряд ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_right(screen, f"{data_trip['min_cell_v_index'] + 1}", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += 35
+    draw_text_left(screen, "Максимум разбаланса ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_right(screen, f"{data_trip['max_unit_diff']:.3f} V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
 
-    screen.blit(trip_text_km, trip_km_rect)
-    screen.blit(trip_text_speed, trip_speed_rect)
-    draw_text(screen, data['trip_time'], font_small, (0, 0, 0), WIDTH - 60, 430)
 
-    draw_text_center(screen, "Статистика поездки:", font_small, (100, 100, 100), 280)
-    draw_text_left(screen, "Пройденное расстояние ", font_small, (100, 100, 100), 10, 340 - 2)
-    draw_text_left(screen, "Средняя скорость ", font_small, (100, 100, 100), 10, 375 - 2)
-    draw_text_left(screen, "Время в пути ", font_small, (100, 100, 100), 10, 410 - 2)
+    #data_trip = {
+    #  'max_speed': 0,
+    #  'max_power': 0,
+    #  'best_time_0_60': 0,
+    #  'trip_start_bettery_perc': 0,
+    #}
 
-    sec_to_exit = 5
+    sec_to_exit = 40#5
     if full_off:
-      sec_to_exit = 15
+      sec_to_exit = 40
 
     timer_off_t = f"До выключения: {sec_to_exit - (time.time() - timer_power_off):.0f} сек"
     timer_off = font_small.render(timer_off_t, True, (0, 0, 0))
-    draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 530)
+    draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 730)
+
+    # Кнопка раннего выключения системы
+    button_rect = pygame.Rect(WIDTH * 0.5 - 200, 800, 400, 50)
+    pygame.draw.rect(screen, (200, 200, 200), button_rect, border_radius=15)
+    button_text = font_small.render("Выключить сейчас", True, (0, 0, 0))
+    screen.blit(button_text, button_text.get_rect(center=button_rect.center))
+
+    mouse = pygame.mouse.get_pos()
+    click = pygame.mouse.get_pressed()
+    if button_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
+      sec_to_exit = 0
 
     if time.time() - timer_power_off > sec_to_exit:
       if not can_start_record:
