@@ -17,6 +17,7 @@ PACKET_INDEX_FOR_VESC = 47#4
 GREEN_COLOR = (0, 175, 0)
 GREEN_LIGHT = (0, 210, 0)
 ORANGE_COLOR = (230, 135, 0)
+GRAY = (180, 180, 180)
 
 BMS_LOST = False
 
@@ -400,6 +401,7 @@ def read_bms(
       BMS_LOST = True
       print("bms lost")
       time.sleep(2)
+    time.sleep(2)
 
 
 
@@ -1012,39 +1014,39 @@ while running:
   #################### PAGE TRIP_STAT ###########################
   elif PAGE_NAME == "TRIP_STAT":
     y_trip_start = 80
-    draw_text_center(screen, "Статистика поездки:", font_small, (100, 100, 100), y_trip_start)
+    draw_text_center(screen, "Статистика поездки:", font_small, GRAY, y_trip_start)
     y_trip_start += 60
-    draw_text_left(screen, "Пройденное расстояние ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_left(screen, "Пройденное расстояние ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data['trip_odometer']:.1f} км", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += 35
-    draw_text_left(screen, "Время в пути ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_left(screen, "Время в пути ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, data['trip_time'], font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += 35
-    draw_text_left(screen, "Средняя скорость ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_left(screen, "Средняя скорость ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data['trip_avg_speed']:.1f} км/ч", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += 35
-    draw_text_left(screen, "Максимальная скорость ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_left(screen, "Максимальная скорость ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{int(data_trip['max_speed'])} км/ч", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += 35
-    draw_text_left(screen, "Лучшее время 0-60 ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_left(screen, "Лучшее время 0-60 ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['best_time_0_60']:.2f} с", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += 35
-    draw_text_left(screen, "Максимальная мощность ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_left(screen, "Максимальная мощность ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{int(data_trip['max_power'])} Вт", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += 35
-    draw_text_left(screen, "Потрачено заряда ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_left(screen, "Потрачено заряда ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{int(data_trip['trip_start_bettery_perc'] - data['battery_level'])} %", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += 35
-    draw_text_left(screen, "Максимальная просадка ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_left(screen, "Максимальная просадка ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['max_voltage_down']:.1f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += 35
-    draw_text_left(screen, "Минимум V в ряду ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_left(screen, "Минимум V в ряду ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['min_cell_v']:.3f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += 35
-    draw_text_left(screen, "Слабейший ряд ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_left(screen, "Слабейший ряд ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['min_cell_v_index'] + 1}", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += 35
-    draw_text_left(screen, "Максимум разбаланса ", font_small, (100, 100, 100), 10, y_trip_start - 2)
+    draw_text_left(screen, "Максимум разбаланса ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['max_unit_diff']:.3f} V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
 
 
