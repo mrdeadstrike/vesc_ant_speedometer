@@ -391,6 +391,10 @@ def read_bms(
       BMS_LOST = False
     except Exception as e:
       BMS_LOST = True
+      try:
+        ser.close()
+      except:
+        ser = None
       print("Не удалось открыть порт:", e)
       time.sleep(2)
       continue
@@ -398,6 +402,10 @@ def read_bms(
     try:
       read_bms_data(ser)
     except:
+      try:
+        ser.close()
+      except:
+        ser = None
       BMS_LOST = True
       print("bms lost")
       time.sleep(2)
