@@ -907,9 +907,9 @@ while running:
       draw_text(screen, f"BMS Lost", font_small, (255, 0, 0), WIDTH * 0.19, v_y)
       
     if not PREV_VALS['bms_lost'] and BMS_LOST:
-      add_speak_message("1")
+      add_speak_message("Связь с бмс потеряна")
     if PREV_VALS['bms_lost'] and not BMS_LOST:
-      add_speak_message("2")
+      add_speak_message("Связь с бмс восстановлена")
     PREV_VALS['bms_lost'] = BMS_LOST
 
 
