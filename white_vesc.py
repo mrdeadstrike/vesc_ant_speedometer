@@ -121,7 +121,7 @@ voltage_percent_table = [
 
 ############## VOICE SPEAK #####################
 #sudo apt install rhvoice-russian
-def speak_run(text, voice='elena', pitch=0.35, rate=0.2, volume=0.0):
+def speak_run(text, voice='anna', pitch=0.0, rate=0.15, volume=0.0):
   command = f'echo "{text}" | RHVoice-client -s {voice} -p {pitch} -r {rate} -v {volume} | aplay'
   subprocess.run(command, shell=True)
 
@@ -944,7 +944,7 @@ while running:
     prev_speed = int(data['speed'])
 
     if not zamer_success_prev and zamer_success:
-      add_speak_message("Разгон от 0 до 60 " + f"{measured_time:.2f}".replace(".", " и "))
+      add_speak_message("Разгон " + f"{measured_time:.2f}".replace(".", " и "))
     zamer_success_prev = zamer_success
 
     razg_boost = 260
