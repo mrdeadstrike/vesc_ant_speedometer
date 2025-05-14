@@ -143,6 +143,7 @@ def speak(text, on_complete=None):
 def add_speak_message(text):
   global MESSAGES_TO_SPEAK
   MESSAGES_TO_SPEAK.append(text)
+  print(MESSAGES_TO_SPEAK)
 
 def message_voice_done():
   global message_processing
@@ -157,8 +158,8 @@ def message_speaker():
       if len(MESSAGES_TO_SPEAK) > MESSAGES_READ_INDEX:
         message_processing = True
         speak(" ".join(MESSAGES_TO_SPEAK[MESSAGES_READ_INDEX:len(MESSAGES_TO_SPEAK)]), message_voice_done)
-        MESSAGES_READ_INDEX = len(MESSAGES_TO_SPEAK) - 1
-    time.sleep(2)
+        MESSAGES_READ_INDEX = len(MESSAGES_TO_SPEAK)
+    time.sleep(0.25)
 
 threading.Thread(target=message_speaker, daemon=True).start()
 
@@ -723,6 +724,7 @@ timer_power_off = None
 block_touch = False
 prev_speed = 0
 zamer_success = False
+zamer_success_prev = False
 
 can_start_record = True
 
@@ -939,6 +941,10 @@ while running:
       measuring = False
       zamer_success = False
     prev_speed = int(data['speed'])
+
+    if not zamer_success_prev and zamer_success:
+      add_speak_message("Разгон от 0 до 60 " + f"{measured_time:.2f}".replace(".", " и "))
+    zamer_success_prev = zamer_success
 
     razg_boost = 260
     if measuring:
