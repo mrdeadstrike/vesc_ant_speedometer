@@ -126,7 +126,7 @@ def speak(text):
     engine.runAndWait()
   threading.Thread(target=_run, daemon=True).start()
 
-speak("Здарова быдло на самокате надеюсь не разложишься сегодня")
+#speak("Здарова быдло на самокате надеюсь не разложишься сегодня")
 
 # Параметры колеса
 wheel_diameter_m = 0.28  # 280 мм = 0.28 м 11 дюймов
@@ -766,30 +766,30 @@ while running:
     border_r = 10
     pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
     draw_text(screen, f"МК", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
-    draw_text(screen, f"?°C", font_small, GREEN_COLOR, WIDTH * 0.25, temp_y)
-    draw_text(screen, f"?°C", font_small, GREEN_COLOR, WIDTH * 0.4, temp_y)
+    draw_text(screen, f"?°", font_small, GREEN_COLOR, WIDTH * 0.25, temp_y)
+    draw_text(screen, f"?°", font_small, GREEN_COLOR, WIDTH * 0.4, temp_y)
 
     temp_y += 50
     pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
     draw_text(screen, f"К", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
-    draw_text(screen, f"{int(data['slave']['temp'])}°C", font_small, GREEN_COLOR, WIDTH * 0.25, temp_y)
-    draw_text(screen, f"{int(data['master']['temp'])}°C", font_small, GREEN_COLOR, WIDTH * 0.4, temp_y)
+    draw_text(screen, f"{int(data['slave']['temp'])}°", font_small, GREEN_COLOR, WIDTH * 0.25, temp_y)
+    draw_text(screen, f"{int(data['master']['temp'])}°", font_small, GREEN_COLOR, WIDTH * 0.4, temp_y)
 
     temp_y -= 50
     pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
     draw_text(screen, f"М/Б", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
     mos_color = get_battery_temp_color(int(data['bms_temp']['mosfet_temp']))
-    draw_text(screen, f"{int(data['bms_temp']['mosfet_temp'])}°C", font_small, mos_color, WIDTH * 0.75, temp_y)
+    draw_text(screen, f"{int(data['bms_temp']['mosfet_temp'])}°", font_small, mos_color, WIDTH * 0.75, temp_y)
     bal_color = get_battery_temp_color(int(data['bms_temp']['balance_temp']))
-    draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°C", font_small, bal_color, WIDTH * 0.9, temp_y)
+    draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°", font_small, bal_color, WIDTH * 0.9, temp_y)
 
     temp_y += 50
     pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
     draw_text(screen, f"Б", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
     bat_temp_1 = get_battery_temp_color(int(data['bms_temp']['external_temp_0']))
-    draw_text(screen, f"{int(data['bms_temp']['external_temp_0'])}°C", font_small, bat_temp_1, WIDTH * 0.75, temp_y)
+    draw_text(screen, f"{int(data['bms_temp']['external_temp_0'])}°", font_small, bat_temp_1, WIDTH * 0.75, temp_y)
     bat_temp_2 = get_battery_temp_color(int(data['bms_temp']['external_temp_1']))
-    draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°C", font_small, bat_temp_2, WIDTH * 0.9, temp_y)
+    draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°", font_small, bat_temp_2, WIDTH * 0.9, temp_y)
 
     #ВОЛЬТАЖ
 
@@ -908,6 +908,8 @@ while running:
       draw_text_center(screen, "-", font_medium, (0, 0, 0), 600 + razg_boost)
 
     # 5. Одометр
+    trip_y = 835 + boostDown
+    trip_y_new_line = 39
     draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (150, 150, 0), 935 + boostDown)
     if trip_start_time is not None:
       # Расчёт дистанции и средней скорости поездки
@@ -931,8 +933,6 @@ while running:
       data['trip_avg_speed'] = data['trip_speed_sum'] / data['trip_tick']
 
       # поездка
-      trip_y = 835 + boostDown
-      trip_y_new_line = 39
       draw_text_right(screen, f"{data['trip_odometer']:.1f} км", font_small, (0, 0, 0), WIDTH - 10, trip_y)
       trip_y += trip_y_new_line
       draw_text_right(screen, f"{data['trip_avg_speed']:.1f} км/ч", font_small, (0, 0, 0), WIDTH - 10, trip_y)
