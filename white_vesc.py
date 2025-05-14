@@ -14,7 +14,7 @@ import urllib
 
 PACKET_INDEX_FOR_VESC = 47#4
 
-GREEN_COLOR = (0, 175, 0)
+GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
 ORANGE_COLOR = (230, 135, 0)
 GRAY = (180, 180, 180)
@@ -74,7 +74,7 @@ data = {
   'trip_speed_sum': 0.0,
   'trip_avg_speed': 0.0,
   'trip_time': "00:00",
-  'cells_v': [3.99, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4.01],
+  'cells_v': [3.99, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4.01],
   'unit_diff': 0.0,
   'bad_cell_min': 0.0,
   'bad_cell_index': 0,
@@ -111,6 +111,22 @@ voltage_percent_table = [
   (3.673 * 15, 50), (3.624 * 15, 40), (3.592 * 15, 30),
   (3.555 * 15, 20), (3.477 * 15, 10), (3.405 * 15, 0)
 ]
+
+############## VOICE SPEAK #####################
+import pyttsx3
+
+engine = pyttsx3.init()
+engine.setProperty('rate', 180)  # скорость речи
+engine.setProperty('voice', 'ru')  # для espeak
+
+
+def speak(text):
+  def _run():
+    engine.say(text)
+    engine.runAndWait()
+  threading.Thread(target=_run, daemon=True).start()
+
+speak("Здарова быдло на самокате надеюсь не разложишься сегодня")
 
 # Параметры колеса
 wheel_diameter_m = 0.28  # 280 мм = 0.28 м 11 дюймов
@@ -384,32 +400,33 @@ def read_bms(
                 #port_name='/dev/ttyUSB0', #Raspbery PI
                 baudrate=19200):
   global BMS_LOST
-  while True:
-    try:
-      ser = serial.Serial(port_name, baudrate, timeout=0.1)
-      print("bms port open")
-      BMS_LOST = False
-    except Exception as e:
-      BMS_LOST = True
+  if IS_RASPBERY:
+    while True:
       try:
-        ser.close()
-      except:
-        ser = None
-      print("Не удалось открыть порт:", e)
-      time.sleep(2)
-      continue
+        ser = serial.Serial(port_name, baudrate, timeout=0.1)
+        print("bms port open")
+        BMS_LOST = False
+      except Exception as e:
+        BMS_LOST = True
+        try:
+          ser.close()
+        except:
+          ser = None
+        print("Не удалось открыть порт:", e)
+        time.sleep(2)
+        continue
 
-    try:
-      read_bms_data(ser)
-    except:
       try:
-        ser.close()
+        read_bms_data(ser)
       except:
-        ser = None
-      BMS_LOST = True
-      print("bms lost")
+        try:
+          ser.close()
+        except:
+          ser = None
+        BMS_LOST = True
+        print("bms lost")
+        time.sleep(2)
       time.sleep(2)
-    time.sleep(2)
 
 
 
@@ -428,7 +445,7 @@ pygame.display.set_caption('VESC ANT Speedometer')
 
 font_large = pygame.font.SysFont('Arial', 150)
 font_medium = pygame.font.SysFont('Arial', 50, True)
-font_small = pygame.font.SysFont('Arial', 35, True)
+font_small = pygame.font.SysFont('Arial', 40, True)
 clock = pygame.time.Clock()
 
 setDebugValues = False
@@ -596,12 +613,12 @@ def draw_cells_block(screen, startY):
       cell_index_color = cell_color
       cell_v_color = cell_color
 
-    pygame.draw.rect(screen, cell_color, (x_shift + left_boost - 15, y_shift + 2, 150, 35), width=2, border_radius=10)
-    draw_text(screen, f"{cell_ind + 1}", font_small, cell_index_color, x_shift + left_boost + 12, y_shift + 20)
-    draw_text(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 85, y_shift + 20)
+    pygame.draw.rect(screen, cell_color, (x_shift + left_boost - 15, y_shift + 2, 155, 38), width=2, border_radius=10)
+    draw_text(screen, f"{cell_ind + 1}", font_small, cell_index_color, x_shift + left_boost + 15, y_shift + 20)
+    draw_text(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 90, y_shift + 20)
 
     if not is_left:
-      y_shift += 40
+      y_shift += 43
       
     is_left = not is_left
     cell_ind += 1
@@ -674,6 +691,8 @@ PAGE_NAME = "SPEEDOMETER"
 miganie = False
 miganie_tick = 0
 
+trip_end_datetime_str = ""
+
 running = True
 #FULL_SCREEN
 if IS_RASPBERY:
@@ -733,7 +752,7 @@ while running:
 
     draw_progress_bar(screen, 15, 130 + up_gap, 110, 15, int(average_duty), 100, f"{int(average_duty)}%", (0, 0, 0))
 
-    draw_text_center(screen, str(data['power']) + "Вт", font_small, (0, 0, 0), 295)
+    draw_text_center(screen, str(data['power']) + " Вт", font_small, (0, 0, 0), 295)
 
     #draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.9, 220 + up_gap), 80, summ_battery, 50, (0, 0, 255))
     #draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.1, 220 + up_gap), 80, average_duty, 100, (0, 0, 0))
@@ -743,21 +762,21 @@ while running:
     #  pygame.draw.rect(screen, (255, 0, 0), (0, 0, WIDTH, HEIGHT), width=12, border_radius=0)
 
     #Температура всего
-    temp_y = 340
+    temp_y = 345
     border_r = 10
-    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
+    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
     draw_text(screen, f"МК", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
     draw_text(screen, f"?°C", font_small, GREEN_COLOR, WIDTH * 0.25, temp_y)
     draw_text(screen, f"?°C", font_small, GREEN_COLOR, WIDTH * 0.4, temp_y)
 
     temp_y += 50
-    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
-    draw_text(screen, f"Vesc", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
+    pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
+    draw_text(screen, f"К", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
     draw_text(screen, f"{int(data['slave']['temp'])}°C", font_small, GREEN_COLOR, WIDTH * 0.25, temp_y)
     draw_text(screen, f"{int(data['master']['temp'])}°C", font_small, GREEN_COLOR, WIDTH * 0.4, temp_y)
 
     temp_y -= 50
-    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
+    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
     draw_text(screen, f"М/Б", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
     mos_color = get_battery_temp_color(int(data['bms_temp']['mosfet_temp']))
     draw_text(screen, f"{int(data['bms_temp']['mosfet_temp'])}°C", font_small, mos_color, WIDTH * 0.75, temp_y)
@@ -765,8 +784,8 @@ while running:
     draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°C", font_small, bal_color, WIDTH * 0.9, temp_y)
 
     temp_y += 50
-    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 20, WIDTH * 0.46, 40), width=2, border_radius=border_r)
-    draw_text(screen, f"Бат", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
+    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
+    draw_text(screen, f"Б", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
     bat_temp_1 = get_battery_temp_color(int(data['bms_temp']['external_temp_0']))
     draw_text(screen, f"{int(data['bms_temp']['external_temp_0'])}°C", font_small, bat_temp_1, WIDTH * 0.75, temp_y)
     bat_temp_2 = get_battery_temp_color(int(data['bms_temp']['external_temp_1']))
@@ -776,7 +795,7 @@ while running:
 
     # 4. Вольтаж батареи и заряд
     boostDown = 50
-    v_y = 460
+    v_y = 450
     # запоминаем вольтаж без нагрузки и рекуперации
     if int(summ_current) == 0:
       data['v_without_nagruzka'] = data['battery_voltage']
@@ -788,8 +807,10 @@ while running:
       voltage_down_color = (255, 0, 0)
     elif voltage_down < -2:
       voltage_down_color = ORANGE_COLOR
-    draw_text(screen, f"{voltage_down:.1f}V", font_medium, voltage_down_color, WIDTH * 0.1275, v_y)
-    draw_text(screen, f"{data['battery_voltage']:.1f}V", font_medium, (0, 100, 255), WIDTH * 0.38, v_y)
+
+    pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 27, WIDTH - 30, 54), width=2, border_radius=border_r)
+    draw_text(screen, f"{voltage_down:.1f}", font_medium, voltage_down_color, WIDTH * 0.1275, v_y)
+    draw_text(screen, f"{data['battery_voltage']:.1f}", font_medium, (0, 100, 255), WIDTH * 0.38, v_y)
     #draw_text_left(screen, f"{data['v_without_nagruzka']:.1f}V", font_medium, (0, 100, 255), WIDTH * 0.5, v_y)
 
     #battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {data['v_without_nagruzka']:.1f}V {int(data['battery_level'])}%", True, (0, 100, 255))
@@ -818,32 +839,32 @@ while running:
 
     battery_color = get_battery_color(data['battery_level'])
     #draw_arc(f"{int(data['battery_level'])}%", screen, (battery_rect.right + 10, 800 - 15 + boostDown), 80, average_duty, 100, (0, 0, 0))
-    draw_progress_bar(screen, WIDTH * 0.75, v_y - 15, 135, 30, data['battery_level'], 100, "", battery_color)
-    draw_text(screen, f"{int(data['battery_level'])}%", font_medium, (0, 0, 0), WIDTH * 0.625, v_y)
+    draw_progress_bar(screen, WIDTH * 0.73, v_y - 15, 135, 30, data['battery_level'], 100, "", battery_color)
+    draw_text(screen, f"{int(data['battery_level'])}%", font_medium, (0, 0, 0), WIDTH * 0.62, v_y)
 
     if not BMS_LOST:
-      v_y += 61 + 10
-      pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 75), width=2, border_radius=border_r)
+      v_y += 55
+      pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 82), width=2, border_radius=border_r)
       v_y -= 2
       weak_color = (200, 200, 200)
       if data['bad_cell_min'] < 3.3 and miganie:
         weak_color = (255, 0, 0)
       draw_text(screen, f"Low {data['bad_cell_index'] + 1}", font_small, weak_color, WIDTH * 0.19, v_y)
       v_y += 40
-      draw_text(screen, f"{(data['bad_cell_min']):.3f}V", font_small, (0, 0, 0), WIDTH * 0.19, v_y)
+      draw_text(screen, f"{(data['bad_cell_min']):.3f}", font_small, (0, 0, 0), WIDTH * 0.19, v_y + 3)
       v_y -= 59
       draw_cells_block(screen, v_y)
 
-      v_y += (51) * 2
-      pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 75), width=2, border_radius=border_r)
+      v_y += (54) * 2
+      pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 82), width=2, border_radius=border_r)
       draw_text(screen, f"Diff", font_small, (200, 200, 200), WIDTH * 0.19, v_y)
       v_y += 38
       unit_diff_color = get_unit_diff_color(data['unit_diff'])
-      draw_text(screen, f"{(data['unit_diff']):.3f}V", font_small, unit_diff_color, WIDTH * 0.19, v_y)
+      draw_text(screen, f"{(data['unit_diff']):.3f}", font_small, unit_diff_color, WIDTH * 0.19, v_y + 3)
       v_y -= 59
     else:
-      v_y += 61 + 10
-      pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 40), width=2, border_radius=border_r)
+      v_y += 55
+      pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 42), width=2, border_radius=border_r)
       draw_text(screen, f"BMS Lost", font_small, (255, 0, 0), WIDTH * 0.19, v_y)
 
 
@@ -877,17 +898,17 @@ while running:
       zamer_success = False
     prev_speed = int(data['speed'])
 
-    razg_boost = 265
+    razg_boost = 260
     if measuring:
       current_elapsed = time.time() - start_time
       draw_text_center(screen, f"Разгон: {current_elapsed:.2f} сек", font_medium, (0, 0, 0), 600 + razg_boost)
     elif measured_time is not None:
       draw_text_center(screen, f"0-60: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600 + razg_boost)
     else:
-      draw_text_center(screen, "Готов", font_medium, (0, 0, 0), 600 + razg_boost)
+      draw_text_center(screen, "-", font_medium, (0, 0, 0), 600 + razg_boost)
 
     # 5. Одометр
-    draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (150, 150, 0), 930 + boostDown)
+    draw_text_center(screen, f"{(data['odometer'] + data['trip_odometer']):.1f} км", font_small, (150, 150, 0), 935 + boostDown)
     if trip_start_time is not None:
       # Расчёт дистанции и средней скорости поездки
       now = time.time()
@@ -910,34 +931,30 @@ while running:
       data['trip_avg_speed'] = data['trip_speed_sum'] / data['trip_tick']
 
       # поездка
-      trip_text_km = font_small.render(f"{data['trip_odometer']:.1f} км", True, (0, 0, 0))
-      trip_text_speed = font_small.render(f"{data['trip_avg_speed']:.1f} км/ч", True, (0, 0, 0))
-      trip_km_rect = trip_text_km.get_rect(topright=(WIDTH - 20, 840 + boostDown))
-      trip_speed_rect = trip_text_speed.get_rect(topright=(WIDTH - 20, 875 + boostDown))
-
-      screen.blit(trip_text_km, trip_km_rect)
-      screen.blit(trip_text_speed, trip_speed_rect)
+      trip_y = 835 + boostDown
+      trip_y_new_line = 39
+      draw_text_right(screen, f"{data['trip_odometer']:.1f} км", font_small, (0, 0, 0), WIDTH - 10, trip_y)
+      trip_y += trip_y_new_line
+      draw_text_right(screen, f"{data['trip_avg_speed']:.1f} км/ч", font_small, (0, 0, 0), WIDTH - 10, trip_y)
 
       trip_time = time.time() - trip_start_time
       minutes = int(trip_time // 60)
       seconds = int(trip_time % 60)
-      draw_text(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), 540, 930 + boostDown)
+      trip_y += trip_y_new_line
+      draw_text_right(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), WIDTH - 10, trip_y)
 
 
     # Отображение даты и времени
     now = datetime.datetime.now()
     weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
     months = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
-    date_week_text = font_small.render(f"{weekdays[now.weekday()]}", True, (0, 0, 0))
-    date_week_rect = date_week_text.get_rect(topleft=(20, 840 + boostDown))
-    screen.blit(date_week_text, date_week_rect)
-    date_text = font_small.render(f"{now.day} {months[now.month-1]}", True, (0, 0, 0))
-    date_rect = date_text.get_rect(topleft=(20, 875 + boostDown))
-    screen.blit(date_text, date_rect)
-
-    time_text = font_small.render(f"{now.hour:02d}:{now.minute:02d}", True, (0, 0, 0))
-    time_rect = time_text.get_rect(topleft=(20, 930 - 20 + boostDown))
-    screen.blit(time_text, time_rect)
+    trip_y -= trip_y_new_line * 2
+    draw_text_left(screen, f"{weekdays[now.weekday()]}", font_small, (0, 0, 0), 10, trip_y)
+    trip_y += trip_y_new_line
+    draw_text_left(screen, f"{now.day} {months[now.month-1]}", font_small, (0, 0, 0), 10, trip_y)
+    trip_y += trip_y_new_line
+    draw_text_left(screen, f"{now.hour:02d}:{now.minute:02d}", font_small, (0, 0, 0), 10, trip_y)
+    trip_end_datetime_str = f"{weekdays[now.weekday()]} {now.day} {months[now.month-1]} {now.hour:02d}:{now.minute:02d}"
 
     # Кнопка выключения системы
     button_rect = pygame.Rect(12, 12, 40, 40)
@@ -1024,37 +1041,41 @@ while running:
     y_trip_start = 80
     draw_text_center(screen, "Статистика поездки:", font_small, GRAY, y_trip_start)
     y_trip_start += 60
-    draw_text_left(screen, "Пройденное расстояние ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{data['trip_odometer']:.1f} км", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += 35
+    y_trip_shift = 40
+    draw_text_left(screen, "Приехал ", font_small, GRAY, 10, y_trip_start - 2)
+    draw_text_right(screen, trip_end_datetime_str, font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += y_trip_shift
     draw_text_left(screen, "Время в пути ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, data['trip_time'], font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += 35
+    y_trip_start += y_trip_shift
+    draw_text_left(screen, "Расстояние ", font_small, GRAY, 10, y_trip_start - 2)
+    draw_text_right(screen, f"{data['trip_odometer']:.1f} км", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += y_trip_shift
     draw_text_left(screen, "Средняя скорость ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data['trip_avg_speed']:.1f} км/ч", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += 35
-    draw_text_left(screen, "Максимальная скорость ", font_small, GRAY, 10, y_trip_start - 2)
+    y_trip_start += y_trip_shift
+    draw_text_left(screen, "Макс. скорость ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{int(data_trip['max_speed'])} км/ч", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += 35
-    draw_text_left(screen, "Лучшее время 0-60 ", font_small, GRAY, 10, y_trip_start - 2)
+    y_trip_start += y_trip_shift
+    draw_text_left(screen, "Лучшее 0-60 ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['best_time_0_60']:.2f} с", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += 35
-    draw_text_left(screen, "Максимальная мощность ", font_small, GRAY, 10, y_trip_start - 2)
+    y_trip_start += y_trip_shift
+    draw_text_left(screen, "Макс. мощность ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{int(data_trip['max_power'])} Вт", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += 35
+    y_trip_start += y_trip_shift
     draw_text_left(screen, "Потрачено заряда ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{int(data_trip['trip_start_bettery_perc'] - data['battery_level'])} %", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += 35
-    draw_text_left(screen, "Максимальная просадка ", font_small, GRAY, 10, y_trip_start - 2)
+    y_trip_start += y_trip_shift
+    draw_text_left(screen, "Макс. просадка ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['max_voltage_down']:.1f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += 35
-    draw_text_left(screen, "Минимум V в ряду ", font_small, GRAY, 10, y_trip_start - 2)
+    y_trip_start += y_trip_shift
+    draw_text_left(screen, "Мин. V в ряду ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['min_cell_v']:.3f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += 35
+    y_trip_start += y_trip_shift
     draw_text_left(screen, "Слабейший ряд ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['min_cell_v_index'] + 1}", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += 35
-    draw_text_left(screen, "Максимум разбаланса ", font_small, GRAY, 10, y_trip_start - 2)
+    y_trip_start += y_trip_shift
+    draw_text_left(screen, "Макс. разбаланс ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['max_unit_diff']:.3f} V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
 
 
@@ -1074,7 +1095,7 @@ while running:
     draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 730)
 
     # Кнопка раннего выключения системы
-    button_rect = pygame.Rect(WIDTH * 0.5 - 200, 800, 400, 50)
+    button_rect = pygame.Rect(WIDTH * 0.5 - 210, 820, 410, 60)
     pygame.draw.rect(screen, (200, 200, 200), button_rect, border_radius=15)
     button_text = font_small.render("Выключить сейчас", True, (0, 0, 0))
     screen.blit(button_text, button_text.get_rect(center=button_rect.center))
