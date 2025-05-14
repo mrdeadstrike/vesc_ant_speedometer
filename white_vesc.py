@@ -25,6 +25,7 @@ import platform
 import os
 
 IS_RASPBERY = False
+IS_MAC = False
 def is_raspberry_pi():
   if platform.system() != "Linux":
     return False
@@ -41,6 +42,7 @@ if is_raspberry_pi():
   IS_RASPBERY = True
 elif platform.system() == "Darwin":
   print("🍎 Это macOS (MacBook)")
+  IS_MAC = True
 else:
   print("🤔 Что-то другое")
   font_y_shift += 2
@@ -127,7 +129,10 @@ def speak_run(text, voice='elena', pitch=0.35, rate=0.2, volume=0.0):
 
 def speak(text):
   def _run():
-    speak_run(text)
+    if IS_MAC:
+      subprocess.Popen(['say', text])
+    else:
+      speak_run(text)
   threading.Thread(target=_run, daemon=True).start()
 
 #speak("Здарова быдло на самокате надеюсь не разложишься сегодня")
