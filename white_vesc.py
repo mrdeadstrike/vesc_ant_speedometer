@@ -25,7 +25,14 @@ PREV_VALS = {
   'bms_lost': False,
   'trip_mins': 0, 
   'page_name': "SPEEDOMETER",
-  'is_trip_start': False,
+  'bms_temp': {
+    'mosfet_temp': 0,
+    'balance_temp': 0,
+    'external_temp_0': 0,
+    'external_temp_1': 0,
+    'external_temp_2': 0,
+    'external_temp_3': 0,
+  },
 }
 
 import platform
@@ -776,6 +783,7 @@ while running:
     add_speak_message("Слабейший ряд " + f"{data_trip['min_cell_v_index'] + 1}")
     add_speak_message("Минимальный вольтаж в ряду " + f"{data_trip['min_cell_v']:.3f}".replace(".", " и ") + " вольт")
     add_speak_message("Максимальный разбаланс " + f"{data_trip['max_unit_diff']:.3f}".replace(".", " и ") + " вольт")
+    add_speak_message("До свидания")
 
   PREV_VALS['page_name'] = PAGE_NAME
   if PAGE_NAME == "SPEEDOMETER":
@@ -854,6 +862,23 @@ while running:
     bat_temp_2 = get_battery_temp_color(int(data['bms_temp']['external_temp_1']))
     draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°", font_small, bat_temp_2, WIDTH * 0.9, temp_y)
 
+    if data['bms_temp']['mosfet_temp'] >= 40 and PREV_VALS['bms_temp']['mosfet_temp'] < 40:
+      add_speak_message(f"Температура мосфетов БМС превысила... {data['bms_temp']['mosfet_temp']} градусов")
+    if data['bms_temp']['balance_temp'] >= 40 and PREV_VALS['bms_temp']['balance_temp'] < 40:
+      add_speak_message(f"Температура балансиров БМС превысила... {data['bms_temp']['balance_temp']} градусов")
+    if data['bms_temp']['external_temp_0'] >= 40 and PREV_VALS['bms_temp']['external_temp_0'] < 40:
+      add_speak_message(f"Температура батареи датчик 1... превысила... {data['bms_temp']['external_temp_0']} градусов")
+    if data['bms_temp']['external_temp_1'] >= 40 and PREV_VALS['bms_temp']['external_temp_1'] < 40:
+      add_speak_message(f"Температура батареи датчик 2... превысила... {data['bms_temp']['external_temp_1']} градусов")
+
+    PREV_VALS['bms_temp'] = {
+      'mosfet_temp': data['bms_temp']['mosfet_temp'],
+      'balance_temp': data['bms_temp']['balance_temp'],
+      'external_temp_0': data['bms_temp']['external_temp_0'],
+      'external_temp_1': data['bms_temp']['external_temp_1'],
+      'external_temp_2': data['bms_temp']['external_temp_2'],
+      'external_temp_3': data['bms_temp']['external_temp_3'],
+    }
     #ВОЛЬТАЖ
 
     # 4. Вольтаж батареи и заряд
@@ -971,6 +996,7 @@ while running:
     if not zamer_success_prev and zamer_success:
       add_speak_message("Разгон")
       add_speak_message(f"{measured_time:.2f}".replace(".", " и "))
+      add_speak_message("секунд")
     zamer_success_prev = zamer_success
 
     razg_boost = 260
