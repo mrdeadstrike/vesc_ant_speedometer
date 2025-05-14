@@ -132,7 +132,8 @@ def speak(text):
     if IS_MAC:
       subprocess.Popen(['say', text])
     else:
-      speak_run(text)
+      pass
+      #speak_run(text)
   threading.Thread(target=_run, daemon=True).start()
 
 #speak("Здарова быдло на самокате надеюсь не разложишься сегодня")
