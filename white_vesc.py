@@ -511,8 +511,8 @@ def draw_speed_arc(surface, center, radius, speed, max_speed, up_gap):
     y_inner = center[1] + (radius - 25) * math.sin(angle)
     pygame.draw.line(surface, (60, 60, 60), (x_inner, y_inner), (x_outer, y_outer), 3)
 
-    x = center[0] + radius * 1.2 * math.cos(angle)
-    y = center[1] + radius * 1.2 * math.sin(angle)
+    x = center[0] + radius * 1.22 * math.cos(angle)
+    y = center[1] + radius * 1.22 * math.sin(angle)
     label = font_small.render(str(mark), True, (0, 0, 0))
     label_rect = label.get_rect(center=(x, y))
     surface.blit(label, label_rect)
@@ -577,6 +577,11 @@ def draw_text_right(surface, text, font, color, x, y):
   rect = render.get_rect(topright=(x, y))
   surface.blit(render, rect)
 
+def draw_text_point_center(surface, text, font, color, x, y):
+  render = font.render(text, True, color)
+  rect = render.get_rect(center=(x, y))
+  surface.blit(render, rect)
+
 def draw_cells_block(screen, startY):
   is_left = True
   x_shift = WIDTH * 0.425
@@ -614,8 +619,8 @@ def draw_cells_block(screen, startY):
       cell_v_color = cell_color
 
     pygame.draw.rect(screen, cell_color, (x_shift + left_boost - 15, y_shift + 2, 155, 38), width=2, border_radius=10)
-    draw_text(screen, f"{cell_ind + 1}", font_small, cell_index_color, x_shift + left_boost + 15, y_shift + 20)
-    draw_text(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 90, y_shift + 20)
+    draw_text_point_center(screen, f"{cell_ind + 1}", font_small, cell_index_color, x_shift + left_boost + 15, y_shift + 20)
+    draw_text_point_center(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 90, y_shift + 20)
 
     if not is_left:
       y_shift += 43
