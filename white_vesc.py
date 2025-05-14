@@ -121,18 +121,43 @@ def speak_run(text, voice='elena', pitch=0.35, rate=0.2, volume=0.0):
   command = f'echo "{text}" | RHVoice-client -s {voice} -p {pitch} -r {rate} -v {volume} | aplay'
   subprocess.run(command, shell=True)
 
+MESSAGES_READ_INDEX = 0
+MESSAGES_TO_SPEAK = []
+message_processing = False
 
-def speak(text):
+def speak(text, on_complete=None):
   def _run():
     if IS_MAC:
-      subprocess.Popen(['say', text])
+      proc = subprocess.Popen(['say', text])
+      proc.wait()  # ← блокирует поток до завершения воспроизведения
+      if on_complete:
+        on_complete()
     else:
-      pass
+      # например, RHVoice или pyttsx3
       speak_run(text)
+      if on_complete:
+        on_complete()
+
   threading.Thread(target=_run, daemon=True).start()
 
-#speak("Здарова быдло на самокате надеюсь не разложишься сегодня")
-speak("Здарова быдло на самокате надеюсь не разложишься сегодня")
+def add_speak_message(text):
+  MESSAGES_TO_SPEAK.append(text)
+
+def message_voice_done():
+  global message_processing
+  message_processing = False
+
+def message_speaker():
+  global message_processing
+  while True:
+    if not message_processing:
+      if len(MESSAGES_TO_SPEAK) > MESSAGES_READ_INDEX:
+        message_processing = True
+        speak(" ".join(MESSAGES_TO_SPEAK[MESSAGES_READ_INDEX:len(MESSAGES_TO_SPEAK)]), message_voice_done)
+        MESSAGES_READ_INDEX = len(MESSAGES_TO_SPEAK) - 1
+    time.sleep(2)
+
+threading.Thread(target=message_speaker, daemon=True).start()
 
 # Параметры колеса
 wheel_diameter_m = 0.28  # 280 мм = 0.28 м 11 дюймов
@@ -406,8 +431,15 @@ def read_bms(
                 #port_name='/dev/ttyUSB0', #Raspbery PI
                 baudrate=19200):
   global BMS_LOST
+  bms_lost_prev = False
+
   if IS_RASPBERY:
     while True:
+      if bms_lost_prev == False and BMS_LOST == True:
+        add_speak_message("связь с бмс потеряна")
+      if bms_lost_prev == True and BMS_LOST == False:
+        add_speak_message("связь с бмс восстановлена")
+      
       try:
         ser = serial.Serial(port_name, baudrate, timeout=0.1)
         print("bms port open")
@@ -433,6 +465,7 @@ def read_bms(
         print("bms lost")
         time.sleep(2)
       time.sleep(2)
+      bms_lost_prev = BMS_LOST
 
 
 
@@ -961,6 +994,9 @@ while running:
     trip_y += trip_y_new_line
     draw_text_left(screen, f"{now.hour:02d}:{now.minute:02d}", font_small, (0, 0, 0), 10, trip_y)
     trip_end_datetime_str = f"{weekdays[now.weekday()]} {now.day} {months[now.month-1]} {now.hour:02d}:{now.minute:02d}"
+
+    # Озвучиваем важную информацию
+    #add_speak_message("1")
 
     # Кнопка выключения системы
     button_rect = pygame.Rect(12, 12, 40, 40)
