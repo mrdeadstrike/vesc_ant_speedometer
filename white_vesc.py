@@ -35,15 +35,15 @@ def is_raspberry_pi():
   except:
     return False
 
+font_y_shift = 0
 if is_raspberry_pi():
   #print("✅ Это Raspberry Pi")
   IS_RASPBERY = True
 elif platform.system() == "Darwin":
-  pass
-  #print("🍎 Это macOS (MacBook)")
+  print("🍎 Это macOS (MacBook)")
 else:
-  pass
-  #print("🤔 Что-то другое")
+  print("🤔 Что-то другое")
+  font_y_shift += 2
 
 
 
@@ -559,27 +559,22 @@ def draw_arc(text, surface, center, radius, speed, max_speed, color):
 
 def draw_text_center(surface, text, font, color, y):
   render = font.render(text, True, color)
-  rect = render.get_rect(center=(WIDTH//2, y))
+  rect = render.get_rect(center=(WIDTH//2, y + font_y_shift))
   surface.blit(render, rect)
 
 def draw_text(surface, text, font, color, x, y):
   render = font.render(text, True, color)
-  rect = render.get_rect(center=(x, y))
+  rect = render.get_rect(center=(x, y + font_y_shift))
   surface.blit(render, rect)
 
 def draw_text_left(surface, text, font, color, x, y):
   render = font.render(text, True, color)
-  rect = render.get_rect(topleft=(x, y))
+  rect = render.get_rect(topleft=(x, y + font_y_shift))
   surface.blit(render, rect)
 
 def draw_text_right(surface, text, font, color, x, y):
   render = font.render(text, True, color)
-  rect = render.get_rect(topright=(x, y))
-  surface.blit(render, rect)
-
-def draw_text_point_center(surface, text, font, color, x, y):
-  render = font.render(text, True, color)
-  rect = render.get_rect(center=(x, y))
+  rect = render.get_rect(topright=(x, y + font_y_shift))
   surface.blit(render, rect)
 
 def draw_cells_block(screen, startY):
@@ -619,8 +614,8 @@ def draw_cells_block(screen, startY):
       cell_v_color = cell_color
 
     pygame.draw.rect(screen, cell_color, (x_shift + left_boost - 15, y_shift + 2, 155, 38), width=2, border_radius=10)
-    draw_text_point_center(screen, f"{cell_ind + 1}", font_small, cell_index_color, x_shift + left_boost + 15, y_shift + 20)
-    draw_text_point_center(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 90, y_shift + 20)
+    draw_text(screen, f"{cell_ind + 1}", font_small, cell_index_color, x_shift + left_boost + 15, y_shift + 20)
+    draw_text(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 90, y_shift + 20)
 
     if not is_left:
       y_shift += 43
