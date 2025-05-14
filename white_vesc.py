@@ -21,6 +21,10 @@ GRAY = (180, 180, 180)
 
 BMS_LOST = False
 
+PREV_VALS = {
+  'bms_lost': False,
+}
+
 import platform
 import os
 
@@ -429,21 +433,13 @@ def read_bms_data(ser):
 
     time.sleep(0.1)
 
-
 def read_bms(
                 port_name='/dev/ttyUSB0', #Ubuntu
                 #port_name='/dev/ttyUSB0', #Raspbery PI
                 baudrate=19200):
   global BMS_LOST
-  bms_lost_prev = False
-
-  if IS_RASPBERY:
+  if IS_RASPBERY or not IS_MAC:
     while True:
-      if bms_lost_prev == False and BMS_LOST == True:
-        add_speak_message("связь с бмс потеряна")
-      if bms_lost_prev == True and BMS_LOST == False:
-        add_speak_message("связь с бмс восстановлена")
-      
       try:
         ser = serial.Serial(port_name, baudrate, timeout=0.1)
         print("bms port open")
@@ -469,7 +465,6 @@ def read_bms(
         print("bms lost")
         time.sleep(2)
       time.sleep(2)
-      bms_lost_prev = BMS_LOST
 
 
 
@@ -910,6 +905,12 @@ while running:
       v_y += 55
       pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 42), width=2, border_radius=border_r)
       draw_text(screen, f"BMS Lost", font_small, (255, 0, 0), WIDTH * 0.19, v_y)
+      
+    if not PREV_VALS['bms_lost'] and BMS_LOST:
+      add_speak_message("1")
+    if PREV_VALS['bms_lost'] and not BMS_LOST:
+      add_speak_message("2")
+    PREV_VALS['bms_lost'] = BMS_LOST
 
 
     # блокируем тач при движении
