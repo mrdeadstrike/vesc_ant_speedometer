@@ -23,6 +23,7 @@ BMS_LOST = False
 
 PREV_VALS = {
   'bms_lost': False,
+  'trip_mins': 0, 
 }
 
 import platform
@@ -989,6 +990,10 @@ while running:
       trip_time = time.time() - trip_start_time
       minutes = int(trip_time // 60)
       seconds = int(trip_time % 60)
+      if PREV_VALS['trip_mins'] != minutes:
+        PREV_VALS['trip_mins'] = minutes
+        add_speak_message(f"Время в пути {minutes:02d} минут")
+        add_speak_message(f"Средняя скорость" + f" {data['trip_avg_speed']:.1f}".replace(".", " и ") + " км/ч")
       trip_y += trip_y_new_line
       draw_text_right(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), WIDTH - 10, trip_y)
 
