@@ -119,14 +119,19 @@ engine = pyttsx3.init()
 engine.setProperty('rate', 180)  # скорость речи
 engine.setProperty('voice', 'ru')  # для espeak
 
+#sudo apt install rhvoice-russian
+def speak_run(text, voice='elena', pitch=0.35, rate=0.2, volume=0.0):
+  command = f'echo "{text}" | RHVoice-client -s {voice} -p {pitch} -r {rate} -v {volume} | aplay'
+  subprocess.run(command, shell=True)
+
 
 def speak(text):
   def _run():
-    engine.say(text)
-    engine.runAndWait()
+    speak_run(text)
   threading.Thread(target=_run, daemon=True).start()
 
 #speak("Здарова быдло на самокате надеюсь не разложишься сегодня")
+speak("Здарова быдло на самокате надеюсь не разложишься сегодня")
 
 # Параметры колеса
 wheel_diameter_m = 0.28  # 280 мм = 0.28 м 11 дюймов
