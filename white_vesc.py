@@ -115,12 +115,6 @@ voltage_percent_table = [
 ]
 
 ############## VOICE SPEAK #####################
-import pyttsx3
-
-engine = pyttsx3.init()
-engine.setProperty('rate', 180)  # скорость речи
-engine.setProperty('voice', 'ru')  # для espeak
-
 #sudo apt install rhvoice-russian
 def speak_run(text, voice='elena', pitch=0.35, rate=0.2, volume=0.0):
   command = f'echo "{text}" | RHVoice-client -s {voice} -p {pitch} -r {rate} -v {volume} | aplay'
