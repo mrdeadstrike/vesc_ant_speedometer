@@ -125,7 +125,7 @@ voltage_percent_table = [
 
 ############## VOICE SPEAK #####################
 #sudo apt install rhvoice-russian
-def speak_run(text, voice='anna', pitch=0.0, rate=0.15, volume=0.0):
+def speak_run(text, voice='anna', pitch=0.0, rate=0.0, volume=0.0):
   command = f'echo "{text}" | RHVoice-client -s {voice} -p {pitch} -r {rate} -v {volume} | aplay'
   subprocess.run(command, shell=True)
 
