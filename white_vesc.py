@@ -24,6 +24,7 @@ BMS_LOST = False
 PREV_VALS = {
   'bms_lost': False,
   'trip_mins': 0, 
+  'page_name': "SPEEDOMETER",
 }
 
 import platform
@@ -85,7 +86,9 @@ data = {
   'cells_v': [3.99, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4.01],
   'unit_diff': 0.0,
   'bad_cell_min': 0.0,
+  'bad_cell_min_peak': 5,
   'bad_cell_index': 0,
+  'bad_cell_min_peak_index': 0,
   'bms_temp': {
     'mosfet_temp': 0,
     'balance_temp': 0,
@@ -162,7 +165,7 @@ def message_speaker():
     if not message_processing:
       if len(MESSAGES_TO_SPEAK) > MESSAGES_READ_INDEX:
         message_processing = True
-        speak(" ".join(MESSAGES_TO_SPEAK[MESSAGES_READ_INDEX:len(MESSAGES_TO_SPEAK)]), message_voice_done)
+        speak("... ".join(MESSAGES_TO_SPEAK[MESSAGES_READ_INDEX:len(MESSAGES_TO_SPEAK)]), message_voice_done)
         MESSAGES_READ_INDEX = len(MESSAGES_TO_SPEAK)
     time.sleep(0.25)
 
@@ -665,6 +668,9 @@ def draw_cells_block(screen, startY):
   data['unit_diff'] = good_cell_max - bad_cell_min
   data['bad_cell_min'] = bad_cell_min
   data['bad_cell_index'] = bad_cell_index
+  if data['bad_cell_min_peak'] > data['bad_cell_min']:
+    data['bad_cell_min_peak'] = data['bad_cell_min']
+    data['bad_cell_min_peak_index'] = bad_cell_index
 
 
 def get_battery_color(level):
@@ -755,6 +761,22 @@ while running:
     SetDebugValues()
 
   up_gap = 25
+  if PREV_VALS['page_name'] == "SPEEDOMETER" and PAGE_NAME == "TRIP_STAT":
+    add_speak_message("Статистика поездки:")
+    add_speak_message("Приехал " + trip_end_datetime_str)
+    add_speak_message("Время в пути " + data['trip_time'])
+    add_speak_message("Расстояние " + f"{data['trip_odometer']:.1f}".replace(".", " и ") + " километров")
+    add_speak_message("Средняя скорость " + f"{data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
+    add_speak_message("Максимальная скорость " + f"{int(data_trip['max_speed'])} километров в час")
+    add_speak_message("Лучшее время от 0 до 60 составило " + f"{data_trip['best_time_0_60']:.2f}".replace(".", " и ") + " секунд")
+    add_speak_message("Максимальная мощность " + f"{int(data_trip['max_power'])} ват")
+    add_speak_message("Потрачено заряда " + f"{int(data_trip['trip_start_bettery_perc'] - data['battery_level'])} процентов")
+    add_speak_message("Максимальная просадка " + f"{data_trip['max_voltage_down']:.1f}".replace(".", " и ") + " вольт")
+    add_speak_message("Слабейший ряд " + f"{data_trip['min_cell_v_index'] + 1}")
+    add_speak_message("Минимальный вольтаж в ряду " + f"{data_trip['min_cell_v']:.3f}".replace(".", " и ") + " вольт")
+    add_speak_message("Максимальный разбаланс " + f"{data_trip['max_unit_diff']:.3f}".replace(".", " и ") + " вольт")
+
+  PREV_VALS['page_name'] = PAGE_NAME
   if PAGE_NAME == "SPEEDOMETER":
     # 1. Скорость полукруг
     average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
@@ -945,7 +967,7 @@ while running:
     prev_speed = int(data['speed'])
 
     if not zamer_success_prev and zamer_success:
-      add_speak_message("Разгон " + f"{measured_time:.2f}".replace(".", " и "))
+      add_speak_message("Разгон " + f"{measured_time:.2f}".replace(".", " и ") + "... пиздец медленно")
     zamer_success_prev = zamer_success
 
     razg_boost = 260
@@ -990,10 +1012,16 @@ while running:
       trip_time = time.time() - trip_start_time
       minutes = int(trip_time // 60)
       seconds = int(trip_time % 60)
+      # Озвучиваем статистику поездки каждую минуту
       if PREV_VALS['trip_mins'] != minutes:
         PREV_VALS['trip_mins'] = minutes
         add_speak_message(f"Время в пути {minutes:02d} минут")
-        add_speak_message(f"Средняя скорость" + f" {data['trip_avg_speed']:.1f}".replace(".", " и ") + " км/ч")
+        if minutes == 15:
+          add_speak_message(f"Опять еле едем из-за долбаебов на дороге")
+        add_speak_message(f"Средняя скорость" + f" {data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
+        add_speak_message(f"Заряд {data['battery_level']} процентов")
+        add_speak_message(f"Слабейший ряд {data['bad_cell_min_peak_index'] + 1}... минимальный заряд " + f"{data['bad_cell_min_peak']}".replace(".", " и ") + " вольт")
+        
       trip_y += trip_y_new_line
       draw_text_right(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), WIDTH - 10, trip_y)
 
@@ -1126,15 +1154,14 @@ while running:
     draw_text_left(screen, "Макс. просадка ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['max_voltage_down']:.1f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += y_trip_shift
-    draw_text_left(screen, "Мин. V в ряду ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{data_trip['min_cell_v']:.3f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
     draw_text_left(screen, "Слабейший ряд ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data_trip['min_cell_v_index'] + 1}", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += y_trip_shift
+    draw_text_left(screen, "Мин. V в ряду ", font_small, GRAY, 10, y_trip_start - 2)
+    draw_text_right(screen, f"{data_trip['min_cell_v']:.3f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += y_trip_shift
     draw_text_left(screen, "Макс. разбаланс ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{data_trip['max_unit_diff']:.3f} V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-
+    draw_text_right(screen, f"{data_trip['max_unit_diff']:.3f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
 
     #data_trip = {
     #  'max_speed': 0,
@@ -1143,9 +1170,9 @@ while running:
     #  'trip_start_bettery_perc': 0,
     #}
 
-    sec_to_exit = 40#5
+    sec_to_exit = 60#5
     if full_off:
-      sec_to_exit = 40
+      sec_to_exit = 60
 
     timer_off_t = f"До выключения: {sec_to_exit - (time.time() - timer_power_off):.0f} сек"
     timer_off = font_small.render(timer_off_t, True, (0, 0, 0))
