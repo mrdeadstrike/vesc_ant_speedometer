@@ -25,6 +25,7 @@ PREV_VALS = {
   'bms_lost': False,
   'trip_mins': 0, 
   'page_name': "SPEEDOMETER",
+  'is_trip_start': False,
 }
 
 import platform
@@ -943,6 +944,7 @@ while running:
       block_touch = False
 
     if trip_start_time is None and data['speed'] > 10:
+      add_speak_message("Погнали епта бля насрал")
       trip_start_time = time.time()
       data_trip['trip_start_bettery_perc'] = data['battery_level']
 
@@ -1016,7 +1018,7 @@ while running:
       # Озвучиваем статистику поездки каждую минуту
       if PREV_VALS['trip_mins'] != minutes:
         PREV_VALS['trip_mins'] = minutes
-        add_speak_message(f"Время в пути {minutes:02d} минут")
+        add_speak_message(f"Время в пути {minutes} минут")
         if minutes == 15:
           add_speak_message(f"Опять еле едем из-за долбаебов на дороге")
         add_speak_message(f"Средняя скорость" + f" {data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
