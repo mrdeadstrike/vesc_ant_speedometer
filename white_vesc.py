@@ -141,6 +141,7 @@ def speak(text, on_complete=None):
   threading.Thread(target=_run, daemon=True).start()
 
 def add_speak_message(text):
+  global MESSAGES_TO_SPEAK
   MESSAGES_TO_SPEAK.append(text)
 
 def message_voice_done():
@@ -149,6 +150,8 @@ def message_voice_done():
 
 def message_speaker():
   global message_processing
+  global MESSAGES_READ_INDEX
+  global MESSAGES_TO_SPEAK
   while True:
     if not message_processing:
       if len(MESSAGES_TO_SPEAK) > MESSAGES_READ_INDEX:
