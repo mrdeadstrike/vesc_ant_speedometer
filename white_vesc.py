@@ -39,6 +39,7 @@ def is_raspberry_pi():
 font_y_shift = 0
 if is_raspberry_pi():
   #print("✅ Это Raspberry Pi")
+  font_y_shift += 2
   IS_RASPBERY = True
 elif platform.system() == "Darwin":
   print("🍎 Это macOS (MacBook)")
@@ -127,7 +128,7 @@ def speak(text):
       subprocess.Popen(['say', text])
     else:
       pass
-      #speak_run(text)
+      speak_run(text)
   threading.Thread(target=_run, daemon=True).start()
 
 #speak("Здарова быдло на самокате надеюсь не разложишься сегодня")
