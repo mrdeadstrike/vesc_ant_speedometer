@@ -162,8 +162,8 @@ def audio_callback(indata, frames, time, status):
   # Преобразуем байты в массив int16
   samples = np.frombuffer(indata, dtype=np.int16)
 
-  # Усиливаем сигнал (например, в 2.5 раза)
-  amplified = samples.astype(np.float32) * 2.5
+  # Усиливаем сигнал (например, в 3.5 раза)
+  amplified = samples.astype(np.float32) * 3.5
 
   # Ограничим амплитуду, чтобы не выйти за int16 диапазон
   amplified = np.clip(amplified, -32768, 32767)
