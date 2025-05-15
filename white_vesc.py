@@ -134,10 +134,11 @@ voltage_percent_table = [
 
 
 ############## VOICE RECOGNITION ###############
-import sounddevice as sd
+import subprocess
+import numpy as np
 import queue
-import json
 import threading
+import json
 from vosk import Model, KaldiRecognizer
 
 # === НАСТРОЙКИ ===
@@ -145,37 +146,26 @@ MODEL_PATH = "vosk-model-ru"  # путь к модели
 if IS_RASPBERY:
   MODEL_PATH = "/home/dead/Documents/vesc_ant_speedometer/vosk-model-ru"
 KEYWORDS = ["напряжени", "температур", "статистик"]
+DEVICE_NAME = "bluez_input.71_BE_AE_97_D4_73_0"  # ← твой TWS микрофон
+SAMPLE_RATE = 8000
 
-# === ОЧЕРЕДЬ ДЛЯ ЗВУКА ===
 q = queue.Queue()
 
-# === МИКРОФОННЫЙ КОЛЛБЭК ===
-def audio_callback3(indata, frames, time, status):
-  if status:
-    print("Ошибка звука:", status)
-  q.put(bytes(indata))
-
-import numpy as np
-
-def audio_callback(indata, frames, time, status):
-  if status:
-    print("Ошибка:", status)
-
-  # Преобразуем байты в массив int16
-  samples = np.frombuffer(indata, dtype=np.int16)
-
-  # Усиливаем сигнал (например, в 3.5 раза)
-  amplified = samples.astype(np.float32) * 3.5
-
-  # Ограничим амплитуду, чтобы не выйти за int16 диапазон
-  amplified = np.clip(amplified, -32768, 32767)
-
-  # Возвращаем обратно в int16
-  amplified = amplified.astype(np.int16)
-
-  # Отправляем усиленные данные в очередь
-  q.put(amplified.tobytes())
-
+def audio_reader():
+  cmd = [
+    "parecord",
+    "--raw",
+    f"--device={DEVICE_NAME}",
+    "--format=s16le",
+    "--channels=1",
+    f"--rate={SAMPLE_RATE}"
+  ]
+  with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
+    while True:
+      raw = proc.stdout.read(1600)  # 100мс аудио
+      if not raw:
+        break
+      q.put(raw)
 
 # === ОБРАБОТЧИК КОМАНД ===
 def handle_command(command):
@@ -193,40 +183,29 @@ def handle_command(command):
     add_speak_message(f"разбаланс... " + f"{data['unit_diff']:.2f}".replace(".", " и ") + " вольт")
   # можно добавлять другие действия
 
-# === ПОТОК РАСПОЗНАВАНИЯ ===
 def recognition_loop():
   model = Model(MODEL_PATH)
-  recognizer = KaldiRecognizer(model, 16000)
+  recognizer = KaldiRecognizer(model, SAMPLE_RATE)
+  print("🎤 Готов слушать команды!")
 
-  with sd.RawInputStream(samplerate=16000, blocksize=2000, dtype='int16',
-                         channels=1, callback=audio_callback):
-    print("🎤 Голосовое распознавание запущено")
+  while True:
+    data = q.get()
+    if recognizer.AcceptWaveform(data):
+      result = json.loads(recognizer.Result())
+      text = result.get("text", "")
+      print("✅", text)
+      for keyword in KEYWORDS:
+        if keyword in text:
+          print(f"🚨 КОМАНДА: {keyword.upper()}")
+          handle_command(keyword)
+    else:
+      partial = json.loads(recognizer.PartialResult())
+      print("🟡", partial.get("partial", ""))
 
-    while True:
-      data = q.get()
-      if recognizer.AcceptWaveform(data):
-        result = json.loads(recognizer.Result())
-        text = result.get("text", "").strip()
-        if text:
-          print("✅ Распознано:", text)
-          for keyword in KEYWORDS:
-            if keyword in text:
-              print(f"🚨 КОМАНДА: {keyword.upper()}")
-              handle_command(keyword)
-      else:
-        partial = json.loads(recognizer.PartialResult()).get("partial", "").strip()
-        if partial:
-          print("🟡 Частично:", partial)
-          for keyword in KEYWORDS:
-            if keyword in partial:
-              print(f"⚡️ КОМАНДА (частично): {keyword.upper()}")
-              #handle_command(keyword)
-
-
-# === ЗАПУСК В ФОНЕ ===
 def start_voice_thread():
-  t = threading.Thread(target=recognition_loop, daemon=True)
-  t.start()
+  threading.Thread(target=audio_reader, daemon=True).start()
+  threading.Thread(target=recognition_loop, daemon=True).start()
+
 
 start_voice_thread()
 
