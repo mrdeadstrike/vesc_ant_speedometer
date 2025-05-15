@@ -1,2 +1,2 @@
 sudo apt install rhvoice-russian
-pip install sounddevice vosk
+pip install sounddevice vosk numpy
