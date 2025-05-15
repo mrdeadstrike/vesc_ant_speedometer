@@ -7,3 +7,6 @@ paplay test.wav
 sudo apt install blueman
 blueman-manager
 parecord --device=bluez_input.71_BE_AE_97_D4_73_0 test.wav
+
+pactl list sources short
+pactl set-source-volume bluez_input.71_BE_AE_97_D4_73_0 150%
