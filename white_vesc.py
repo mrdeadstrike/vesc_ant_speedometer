@@ -1009,8 +1009,8 @@ while running:
 
     if not zamer_success_prev and zamer_success:
       add_speak_message("Разгон")
-      add_speak_message(f"{measured_time:.2f}".replace(".", " и "))
-      add_speak_message("секунд")
+      add_speak_message(f"{measured_time:.2f}".replace(".", " и ") + " секунды")
+      #add_speak_message("секунды")
     zamer_success_prev = zamer_success
 
     razg_boost = 260
