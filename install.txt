@@ -6,3 +6,4 @@ parecord --device=bluez_source.XX_XX_XX_XX_XX_XX.headset_head_unit test.wav
 paplay test.wav
 sudo apt install blueman
 blueman-manager
+parecord --device=bluez_input.71_BE_AE_97_D4_73_0 test.wav
