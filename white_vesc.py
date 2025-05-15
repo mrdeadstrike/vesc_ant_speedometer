@@ -133,7 +133,7 @@ voltage_percent_table = [
 
 ############## VOICE SPEAK #####################
 #sudo apt install rhvoice-russian
-def speak_run(text, voice='anna', pitch=0.0, rate=0.0, volume=0.0):
+def speak_run(text, voice='anna', pitch=0.0, rate=0.1, volume=0.0):
   command = f'echo "{text}" | RHVoice-client -s {voice} -p {pitch} -r {rate} -v {volume} | aplay'
   subprocess.run(command, shell=True)
 
@@ -746,6 +746,7 @@ miganie = False
 miganie_tick = 0
 
 trip_end_datetime_str = ""
+trip_end_datetime_str_full = ""
 
 running = True
 #FULL_SCREEN
@@ -771,8 +772,13 @@ while running:
   up_gap = 25
   if PREV_VALS['page_name'] == "SPEEDOMETER" and PAGE_NAME == "TRIP_STAT":
     add_speak_message("Статистика поездки:")
-    add_speak_message("Приехал " + trip_end_datetime_str)
-    add_speak_message("Время в пути " + data['trip_time'])
+    add_speak_message("Приехал " + trip_end_datetime_str_full)
+    trip_info = data['trip_time']
+    if trip_info[0] == '0':
+      trip_info = trip_info[1:]
+      trip_info = trip_info.replace(":", " и ")
+      print(trip_info)
+    add_speak_message("Время в пути " + trip_info)
     add_speak_message("Расстояние " + f"{data['trip_odometer']:.1f}".replace(".", " и ") + " километров")
     add_speak_message("Средняя скорость " + f"{data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
     add_speak_message("Максимальная скорость " + f"{int(data_trip['max_speed'])} километров в час")
@@ -781,13 +787,13 @@ while running:
     add_speak_message("Потрачено заряда " + f"{int(data_trip['trip_start_bettery_perc'] - data['battery_level'])} процентов")
     add_speak_message("Максимальная просадка " + f"{data_trip['max_voltage_down']:.1f}".replace(".", " и ") + " вольт")
     add_speak_message("Слабейший ряд " + f"{data_trip['min_cell_v_index'] + 1}")
-    add_speak_message("Минимальный вольтаж в ряду " + f"{data_trip['min_cell_v']:.3f}".replace(".", " и ") + " вольт")
-    add_speak_message("Максимальный разбаланс " + f"{data_trip['max_unit_diff']:.3f}".replace(".", " и ") + " вольт")
+    add_speak_message("Минимальный вольтаж в ряду " + f"{data_trip['min_cell_v']:.2}".replace(".", " и ") + " вольт")
+    add_speak_message("Максимальный разбаланс " + f"{data_trip['max_unit_diff']:.2f}".replace(".", " и ") + " вольт")
     add_speak_message("До свидания")
 
   PREV_VALS['page_name'] = PAGE_NAME
   if PAGE_NAME == "SPEEDOMETER":
-    # 1. Скорость полукруг
+    # 1. Скорость полукруг 
     average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
     speed_color = (0, 0, 0)
     #if average_duty >= 85:
@@ -864,12 +870,20 @@ while running:
 
     if data['bms_temp']['mosfet_temp'] >= 40 and PREV_VALS['bms_temp']['mosfet_temp'] < 40:
       add_speak_message(f"Температура мосфетов БМС превысила... {data['bms_temp']['mosfet_temp']} градусов")
+    if data['bms_temp']['mosfet_temp'] >= 60 and PREV_VALS['bms_temp']['mosfet_temp'] < 60:
+      add_speak_message(f"Внимание... Температура мосфетов БМС превысила... {data['bms_temp']['mosfet_temp']} градусов")
     if data['bms_temp']['balance_temp'] >= 40 and PREV_VALS['bms_temp']['balance_temp'] < 40:
       add_speak_message(f"Температура балансиров БМС превысила... {data['bms_temp']['balance_temp']} градусов")
+    if data['bms_temp']['balance_temp'] >= 60 and PREV_VALS['bms_temp']['balance_temp'] < 60:
+      add_speak_message(f"Внимание... Температура балансиров БМС превысила... {data['bms_temp']['balance_temp']} градусов")
     if data['bms_temp']['external_temp_0'] >= 40 and PREV_VALS['bms_temp']['external_temp_0'] < 40:
       add_speak_message(f"Температура батареи датчик 1... превысила... {data['bms_temp']['external_temp_0']} градусов")
+    if data['bms_temp']['external_temp_0'] >= 60 and PREV_VALS['bms_temp']['external_temp_0'] < 60:
+      add_speak_message(f"Внимание... Температура батареи датчик 1... превысила... {data['bms_temp']['external_temp_0']} градусов")
     if data['bms_temp']['external_temp_1'] >= 40 and PREV_VALS['bms_temp']['external_temp_1'] < 40:
       add_speak_message(f"Температура батареи датчик 2... превысила... {data['bms_temp']['external_temp_1']} градусов")
+    if data['bms_temp']['external_temp_1'] >= 60 and PREV_VALS['bms_temp']['external_temp_1'] < 60:
+      add_speak_message(f"Внимание... Температура батареи датчик 2... превысила... {data['bms_temp']['external_temp_1']} градусов")
 
     PREV_VALS['bms_temp'] = {
       'mosfet_temp': data['bms_temp']['mosfet_temp'],
@@ -1041,6 +1055,7 @@ while running:
       trip_time = time.time() - trip_start_time
       minutes = int(trip_time // 60)
       seconds = int(trip_time % 60)
+
       # Озвучиваем статистику поездки каждую минуту
       if PREV_VALS['trip_mins'] != minutes:
         PREV_VALS['trip_mins'] = minutes
@@ -1049,7 +1064,7 @@ while running:
           add_speak_message(f"Опять еле едем из-за долбаебов на дороге")
         add_speak_message(f"Средняя скорость" + f" {data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
         add_speak_message(f"Заряд {data['battery_level']} процентов")
-        add_speak_message(f"Слабейший ряд {data['bad_cell_min_peak_index'] + 1}... минимальный заряд " + f"{data['bad_cell_min_peak']}".replace(".", " и ") + " вольт")
+        add_speak_message(f"Слабейший ряд... {data['bad_cell_min_peak_index'] + 1}... минимальный заряд... " + f"{data['bad_cell_min_peak']:.2f}".replace(".", " и ") + "... вольт")
         
       trip_y += trip_y_new_line
       draw_text_right(screen, f"{minutes:02d}:{seconds:02d}", font_small, (0, 0, 0), WIDTH - 10, trip_y)
@@ -1059,6 +1074,8 @@ while running:
     now = datetime.datetime.now()
     weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
     months = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+    weekdays_full = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
+    months_full = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
     trip_y -= trip_y_new_line * 2
     draw_text_left(screen, f"{weekdays[now.weekday()]}", font_small, (0, 0, 0), 10, trip_y)
     trip_y += trip_y_new_line
@@ -1066,9 +1083,8 @@ while running:
     trip_y += trip_y_new_line
     draw_text_left(screen, f"{now.hour:02d}:{now.minute:02d}", font_small, (0, 0, 0), 10, trip_y)
     trip_end_datetime_str = f"{weekdays[now.weekday()]} {now.day} {months[now.month-1]} {now.hour:02d}:{now.minute:02d}"
-
-    # Озвучиваем важную информацию
-    #add_speak_message("1")
+    trip_end_datetime_str_full = f"{weekdays_full[now.weekday()]} {now.day} {months_full[now.month-1]} {now.hour:02d} часов {now.minute:02d} минут"
+   
 
     # Кнопка выключения системы
     button_rect = pygame.Rect(12, 12, 40, 40)
