@@ -153,6 +153,28 @@ def audio_callback(indata, frames, time, status):
     print("Ошибка звука:", status)
   q.put(bytes(indata))
 
+import numpy as np
+
+def audio_callback_2(indata, frames, time, status):
+  if status:
+    print("Ошибка:", status)
+
+  # Преобразуем байты в массив int16
+  samples = np.frombuffer(indata, dtype=np.int16)
+
+  # Усиливаем сигнал (например, в 2.5 раза)
+  amplified = samples.astype(np.float32) * 3.5
+
+  # Ограничим амплитуду, чтобы не выйти за int16 диапазон
+  amplified = np.clip(amplified, -32768, 32767)
+
+  # Возвращаем обратно в int16
+  amplified = amplified.astype(np.int16)
+
+  # Отправляем усиленные данные в очередь
+  q.put(amplified.tobytes())
+
+
 # === ОБРАБОТЧИК КОМАНД ===
 def handle_command(command):
   if command == "температур":
@@ -162,7 +184,11 @@ def handle_command(command):
     add_speak_message(f"Батарея датчик 1... {data['bms_temp']['external_temp_1']} градусов")
     add_speak_message(f"Батарея датчик 2... {data['bms_temp']['external_temp_2']} градусов")
   elif command == "напряжени":
-    add_speak_message(f"Напряжение {data['battery_voltage']} вольт")
+    add_speak_message(f"Напряжение " + f"{data['battery_voltage']:.1f}".replace(".", " и ") + " вольт")
+    add_speak_message(f"Просадка " + f"{data['voltage_down']:.1f}".replace(".", " и ") + " вольт")
+    add_speak_message(f"Слабейший ряд... " + f"{data['bad_cell_index'] + 1}")
+    add_speak_message(f"минимальный заряд... " + f"{data['bad_cell_min']:.2f}".replace(".", " и ") + " вольт")
+    add_speak_message(f"разбаланс... " + f"{data['unit_diff']:.2f}".replace(".", " и ") + " вольт")
   # можно добавлять другие действия
 
 # === ПОТОК РАСПОЗНАВАНИЯ ===
@@ -192,7 +218,7 @@ def recognition_loop():
           for keyword in KEYWORDS:
             if keyword in partial:
               print(f"⚡️ КОМАНДА (частично): {keyword.upper()}")
-              handle_command(keyword)
+              #handle_command(keyword)
 
 
 # === ЗАПУСК В ФОНЕ ===
@@ -982,8 +1008,8 @@ while running:
       voltage_down_color = ORANGE_COLOR
 
     pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 27, WIDTH - 30, 54), width=2, border_radius=border_r)
-    draw_text(screen, f"{voltage_down:.1f}", font_medium, voltage_down_color, WIDTH * 0.1275, v_y)
-    draw_text(screen, f"{data['battery_voltage']:.1f}", font_medium, (0, 100, 255), WIDTH * 0.38, v_y)
+    draw_text(screen, f"{data['battery_voltage']:.1f}", font_medium, (0, 100, 255), WIDTH * 0.1275, v_y)
+    draw_text(screen, f"{voltage_down:.1f}", font_medium, voltage_down_color, WIDTH * 0.38, v_y)
     #draw_text_left(screen, f"{data['v_without_nagruzka']:.1f}V", font_medium, (0, 100, 255), WIDTH * 0.5, v_y)
 
     #battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {data['v_without_nagruzka']:.1f}V {int(data['battery_level'])}%", True, (0, 100, 255))
