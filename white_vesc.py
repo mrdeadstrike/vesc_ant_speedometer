@@ -142,6 +142,8 @@ from vosk import Model, KaldiRecognizer
 
 # === НАСТРОЙКИ ===
 MODEL_PATH = "vosk-model-ru"  # путь к модели
+if IS_RASPBERY:
+  MODEL_PATH = "/home/dead/Documents/vesc_ant_speedometer/vosk-model-ru"
 KEYWORDS = ["напряжени", "температур", "статистик"]
 
 # === ОЧЕРЕДЬ ДЛЯ ЗВУКА ===
