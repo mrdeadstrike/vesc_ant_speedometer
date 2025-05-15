@@ -207,7 +207,7 @@ def recognition_loop():
           handle_command(keyword)
     else:
       partial = json.loads(recognizer.PartialResult())
-      print("🟡", partial.get("partial", ""))
+      #print("🟡", partial.get("partial", ""))
 
 def start_voice_thread():
   threading.Thread(target=audio_reader, daemon=True).start()
