@@ -148,7 +148,35 @@ KEYWORDS = ["напряжени", "температур", "статистик"]
 q = queue.Queue()
 
 # === МИКРОФОННЫЙ КОЛЛБЭК ===
+from rnnoise_wrapper import RNNoise
+import numpy as np
+
+# Создаём объект RNNoise один раз
+denoiser = RNNoise()
+
 def audio_callback(indata, frames, time, status):
+  if status:
+    print("Ошибка:", status)
+
+  samples = np.frombuffer(indata, dtype=np.int16).astype(np.float32)
+
+  # делим на фреймы по 480 семплов
+  frame_size = 480
+  cleaned = []
+
+  for i in range(0, len(samples), frame_size):
+    frame = samples[i:i + frame_size]
+    if len(frame) < frame_size:
+      break
+    denoised = denoiser.filter(frame)
+    cleaned.append(denoised)
+
+  # Склеиваем, преобразуем в int16 и отправляем
+  output = np.clip(np.concatenate(cleaned), -32768, 32767).astype(np.int16)
+  q.put(output.tobytes())
+
+
+def audio_callback3(indata, frames, time, status):
   if status:
     print("Ошибка звука:", status)
   q.put(bytes(indata))
