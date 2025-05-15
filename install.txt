@@ -4,3 +4,5 @@ pip install sounddevice vosk numpy
 pactl list sources short
 parecord --device=bluez_source.XX_XX_XX_XX_XX_XX.headset_head_unit test.wav
 paplay test.wav
+sudo apt install blueman
+blueman-manager
