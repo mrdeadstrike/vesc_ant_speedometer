@@ -847,8 +847,8 @@ trip_end_datetime_str_full = ""
 
 running = True
 #FULL_SCREEN
-if IS_RASPBERY:
-  screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+#if IS_RASPBERY:
+#  screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
 
 while running:
   for event in pygame.event.get():
