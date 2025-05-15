@@ -147,10 +147,12 @@ if IS_RASPBERY:
   MODEL_PATH = "/home/dead/Documents/vesc_ant_speedometer/vosk-model-ru"
 KEYWORDS = ["напряжени", "температур", "статистик"]
 DEVICE_NAME = "bluez_input.71_BE_AE_97_D4_73_0"  # ← твой TWS микрофон
-SAMPLE_RATE = 8000
+INPUT_SAMPLE_RATE = 8000
+TARGET_SAMPLE_RATE = 16000
 
 q = queue.Queue()
 
+from scipy.signal import resample
 def audio_reader():
   cmd = [
     "parecord",
@@ -158,14 +160,17 @@ def audio_reader():
     f"--device={DEVICE_NAME}",
     "--format=s16le",
     "--channels=1",
-    f"--rate={SAMPLE_RATE}"
+    f"--rate={INPUT_SAMPLE_RATE}"
   ]
   with subprocess.Popen(cmd, stdout=subprocess.PIPE) as proc:
     while True:
-      raw = proc.stdout.read(1600)  # 100мс аудио
+      raw = proc.stdout.read(1600)  # 100мс при 8000 Гц
       if not raw:
         break
-      q.put(raw)
+      samples = np.frombuffer(raw, dtype=np.int16)
+      resampled = resample(samples, int(len(samples) * TARGET_SAMPLE_RATE / INPUT_SAMPLE_RATE))
+      resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
+      q.put(resampled.tobytes())
 
 # === ОБРАБОТЧИК КОМАНД ===
 def handle_command(command):
@@ -185,7 +190,7 @@ def handle_command(command):
 
 def recognition_loop():
   model = Model(MODEL_PATH)
-  recognizer = KaldiRecognizer(model, SAMPLE_RATE)
+  recognizer = KaldiRecognizer(model, TARGET_SAMPLE_RATE)
   print("🎤 Готов слушать команды!")
 
   while True:
