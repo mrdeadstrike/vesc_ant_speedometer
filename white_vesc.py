@@ -214,7 +214,7 @@ def start_voice_thread():
   threading.Thread(target=recognition_loop, daemon=True).start()
 
 
-start_voice_thread()
+#start_voice_thread()
 
 ############## VOICE SPEAK #####################
 #sudo apt install rhvoice-russian
