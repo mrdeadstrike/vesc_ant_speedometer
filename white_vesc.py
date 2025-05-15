@@ -2,6 +2,7 @@ import datetime
 import signal
 import socket
 import subprocess
+import numpy as np
 import pygame
 import threading
 import serial
@@ -141,7 +142,7 @@ from vosk import Model, KaldiRecognizer
 
 # === НАСТРОЙКИ ===
 MODEL_PATH = "vosk-model-ru"  # путь к модели
-KEYWORDS = ["стоп", "скорость", "заряд"]
+KEYWORDS = ["напряжени", "температур", "статистик"]
 
 # === ОЧЕРЕДЬ ДЛЯ ЗВУКА ===
 q = queue.Queue()
@@ -154,12 +155,14 @@ def audio_callback(indata, frames, time, status):
 
 # === ОБРАБОТЧИК КОМАНД ===
 def handle_command(command):
-  if command == "стоп":
-    print(">> Останавливаюсь!")
-  elif command == "скорость":
-    print(">> Скорость: 24 км/ч")
-  elif command == "заряд":
-    print(">> Заряд: 81%")
+  if command == "температур":
+    add_speak_message("Температура БМС")
+    add_speak_message(f"Мосфеты {data['bms_temp']['mosfet_temp']} градусов")
+    add_speak_message(f"Балансиры {data['bms_temp']['balance_temp']} градусов")
+    add_speak_message(f"Батарея датчик 1... {data['bms_temp']['external_temp_1']} градусов")
+    add_speak_message(f"Батарея датчик 2... {data['bms_temp']['external_temp_2']} градусов")
+  elif command == "напряжени":
+    add_speak_message(f"Напряжение {data['battery_voltage']} вольт")
   # можно добавлять другие действия
 
 # === ПОТОК РАСПОЗНАВАНИЯ ===
@@ -197,8 +200,7 @@ def start_voice_thread():
   t = threading.Thread(target=recognition_loop, daemon=True)
   t.start()
 
-#start_voice_thread()
-
+start_voice_thread()
 
 ############## VOICE SPEAK #####################
 #sudo apt install rhvoice-russian
