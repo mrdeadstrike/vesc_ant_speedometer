@@ -168,6 +168,8 @@ def audio_reader():
       if not raw:
         break
       samples = np.frombuffer(raw, dtype=np.int16)
+      samples = samples * 2.5  # 🔊 усиление
+      samples = np.clip(samples, -32768, 32767)
       resampled = resample(samples, int(len(samples) * TARGET_SAMPLE_RATE / INPUT_SAMPLE_RATE))
       resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
       q.put(resampled.tobytes())
