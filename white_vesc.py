@@ -131,6 +131,75 @@ voltage_percent_table = [
   (3.555 * 15, 20), (3.477 * 15, 10), (3.405 * 15, 0)
 ]
 
+
+############## VOICE RECOGNITION ###############
+import sounddevice as sd
+import queue
+import json
+import threading
+from vosk import Model, KaldiRecognizer
+
+# === НАСТРОЙКИ ===
+MODEL_PATH = "vosk-model-ru"  # путь к модели
+KEYWORDS = ["стоп", "скорость", "заряд"]
+
+# === ОЧЕРЕДЬ ДЛЯ ЗВУКА ===
+q = queue.Queue()
+
+# === МИКРОФОННЫЙ КОЛЛБЭК ===
+def audio_callback(indata, frames, time, status):
+  if status:
+    print("Ошибка звука:", status)
+  q.put(bytes(indata))
+
+# === ОБРАБОТЧИК КОМАНД ===
+def handle_command(command):
+  if command == "стоп":
+    print(">> Останавливаюсь!")
+  elif command == "скорость":
+    print(">> Скорость: 24 км/ч")
+  elif command == "заряд":
+    print(">> Заряд: 81%")
+  # можно добавлять другие действия
+
+# === ПОТОК РАСПОЗНАВАНИЯ ===
+def recognition_loop():
+  model = Model(MODEL_PATH)
+  recognizer = KaldiRecognizer(model, 16000)
+
+  with sd.RawInputStream(samplerate=16000, blocksize=2000, dtype='int16',
+                         channels=1, callback=audio_callback):
+    print("🎤 Голосовое распознавание запущено")
+
+    while True:
+      data = q.get()
+      if recognizer.AcceptWaveform(data):
+        result = json.loads(recognizer.Result())
+        text = result.get("text", "").strip()
+        if text:
+          print("✅ Распознано:", text)
+          for keyword in KEYWORDS:
+            if keyword in text:
+              print(f"🚨 КОМАНДА: {keyword.upper()}")
+              handle_command(keyword)
+      else:
+        partial = json.loads(recognizer.PartialResult()).get("partial", "").strip()
+        if partial:
+          print("🟡 Частично:", partial)
+          for keyword in KEYWORDS:
+            if keyword in partial:
+              print(f"⚡️ КОМАНДА (частично): {keyword.upper()}")
+              handle_command(keyword)
+
+
+# === ЗАПУСК В ФОНЕ ===
+def start_voice_thread():
+  t = threading.Thread(target=recognition_loop, daemon=True)
+  t.start()
+
+#start_voice_thread()
+
+
 ############## VOICE SPEAK #####################
 #sudo apt install rhvoice-russian
 def speak_run(text, voice='anna', pitch=0.0, rate=0.1, volume=0.0):
@@ -159,7 +228,7 @@ def speak(text, on_complete=None):
 def add_speak_message(text):
   global MESSAGES_TO_SPEAK
   MESSAGES_TO_SPEAK.append(text)
-  print(MESSAGES_TO_SPEAK)
+  #print(MESSAGES_TO_SPEAK)
 
 def message_voice_done():
   global message_processing
