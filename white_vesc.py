@@ -856,24 +856,24 @@ while running:
 
   up_gap = 25
   if PREV_VALS['page_name'] == "SPEEDOMETER" and PAGE_NAME == "TRIP_STAT":
-    add_speak_message("Статистика поездки:")
-    add_speak_message("Приехал " + trip_end_datetime_str_full)
+    #add_speak_message("Статистика поездки:")
+    #add_speak_message("Приехал " + trip_end_datetime_str_full)
     trip_info = data['trip_time']
     if trip_info[0] == '0':
       trip_info = trip_info[1:]
       trip_info = trip_info.replace(":", " и ")
-      print(trip_info)
     add_speak_message("Время в пути " + trip_info)
-    add_speak_message("Расстояние " + f"{data['trip_odometer']:.1f}".replace(".", " и ") + " километров")
-    add_speak_message("Средняя скорость " + f"{data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
+    add_speak_message("Приехал " + trip_end_datetime_str_full)
+    #add_speak_message("Расстояние " + f"{data['trip_odometer']:.1f}".replace(".", " и ") + " километров")
+    #add_speak_message("Средняя скорость " + f"{data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
     add_speak_message("Максимальная скорость " + f"{int(data_trip['max_speed'])} километров в час")
-    add_speak_message("Лучшее время от 0 до 60 составило " + f"{data_trip['best_time_0_60']:.2f}".replace(".", " и ") + " секунд")
-    add_speak_message("Максимальная мощность " + f"{int(data_trip['max_power'])} ват")
-    add_speak_message("Потрачено заряда " + f"{int(data_trip['trip_start_bettery_perc'] - data['battery_level'])} процентов")
-    add_speak_message("Максимальная просадка " + f"{data_trip['max_voltage_down']:.1f}".replace(".", " и ") + " вольт")
+    #add_speak_message("Лучшее время от 0 до 60 составило " + f"{data_trip['best_time_0_60']:.2f}".replace(".", " и ") + " секунд")
+    #add_speak_message("Максимальная мощность " + f"{int(data_trip['max_power'])} ват")
+    #add_speak_message("Потрачено заряда " + f"{int(data_trip['trip_start_bettery_perc'] - data['battery_level'])} процентов")
+    #add_speak_message("Максимальная просадка " + f"{data_trip['max_voltage_down']:.1f}".replace(".", " и ") + " вольт")
     add_speak_message("Слабейший ряд " + f"{data_trip['min_cell_v_index'] + 1}")
     add_speak_message("Минимальный вольтаж в ряду " + f"{data_trip['min_cell_v']:.2}".replace(".", " и ") + " вольт")
-    add_speak_message("Максимальный разбаланс " + f"{data_trip['max_unit_diff']:.2f}".replace(".", " и ") + " вольт")
+    #add_speak_message("Максимальный разбаланс " + f"{data_trip['max_unit_diff']:.2f}".replace(".", " и ") + " вольт")
     add_speak_message("До свидания")
 
   PREV_VALS['page_name'] = PAGE_NAME
@@ -1168,8 +1168,9 @@ while running:
     trip_y += trip_y_new_line
     draw_text_left(screen, f"{now.hour:02d}:{now.minute:02d}", font_small, (0, 0, 0), 10, trip_y)
     trip_end_datetime_str = f"{weekdays[now.weekday()]} {now.day} {months[now.month-1]} {now.hour:02d}:{now.minute:02d}"
-    trip_end_datetime_str_full = f"{weekdays_full[now.weekday()]} {now.day} {months_full[now.month-1]} {now.hour:02d} часов {now.minute:02d} минут"
-   
+    #trip_end_datetime_str_full = f"{weekdays_full[now.weekday()]} {now.day} {months_full[now.month-1]} {now.hour:02d} часов {now.minute:02d} минут"
+    trip_end_datetime_str_full = f"{now.hour:02d} часов {now.minute:02d} минут"
+  
 
     # Кнопка выключения системы
     button_rect = pygame.Rect(12, 12, 40, 40)
