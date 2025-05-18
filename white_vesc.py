@@ -890,7 +890,7 @@ while running:
     #add_speak_message("Потрачено заряда " + f"{int(data_trip['trip_start_bettery_perc'] - data['battery_level'])} процентов")
     #add_speak_message("Максимальная просадка " + f"{data_trip['max_voltage_down']:.1f}".replace(".", " и ") + " вольт")
     add_speak_message("Слабейший ряд " + f"{data_trip['min_cell_v_index'] + 1}")
-    add_speak_message("Минимальный вольтаж в ряду " + f"{data_trip['min_cell_v']:.2}".replace(".", " и ") + " вольт")
+    add_speak_message("Минимальный вольтаж в ряду " + f"{data_trip['min_cell_v']:.2f}".replace(".", " и ") + " вольт")
     #add_speak_message("Максимальный разбаланс " + f"{data_trip['max_unit_diff']:.2f}".replace(".", " и ") + " вольт")
     add_speak_message("До свидания")
 
