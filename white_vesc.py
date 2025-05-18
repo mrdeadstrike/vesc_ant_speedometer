@@ -81,8 +81,8 @@ except:
 
 data = {
   'speed': 0.0,
-  'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
-  'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0},
+  'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0, 'temp_motor': 0},
+  'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0, 'temp_motor': 0},
   'battery_voltage': 0,
   'v_without_nagruzka': 0,
   'battery_level': 0,
@@ -306,6 +306,7 @@ def parse_vesc_payload(payload, forwarded=False):
     mos_temp = struct.unpack_from('>h', payload, shift)[0] / 10.0
     shift += 2
     #values.temp_motor = vb.vbPopFrontDouble16(1e1);
+    motor_temp = struct.unpack_from('>h', payload, shift)[0] / 10.0
     shift += 2
     #values.current_motor = vb.vbPopFrontDouble32(1e2);
     motor_current = struct.unpack_from('>i', payload, shift)[0] / 100.0
@@ -356,7 +357,7 @@ def parse_vesc_payload(payload, forwarded=False):
     #values.uptime_ms = vb.vbPopFrontUint32();
     shift += 4
 
-    return rpm, input_current, duty_cycle, input_voltage, motor_current, mos_temp, battery_level, odometer
+    return rpm, input_current, duty_cycle, input_voltage, motor_current, mos_temp, motor_temp, battery_level, odometer
   except Exception as e:
     print("Ошибка парсинга payload:", e)
     return None
@@ -409,7 +410,7 @@ def read_serial(
             real_payload = payload[1:]
             parsed = parse_vesc_payload(real_payload, forwarded=False)
             if parsed:
-              rpm, input_current, duty_cycle, volt, motor_current, mos_temp, battery_level, odometer = parsed
+              rpm, input_current, duty_cycle, volt, motor_current, mos_temp, motor_temp, battery_level, odometer = parsed
               wheel_rpm = rpm
               speed_mps = (wheel_rpm * wheel_circumference_m) / 60
               data['speed'] = speed_mps * 3.6
@@ -418,6 +419,7 @@ def read_serial(
               data['master']['battery_current'] = input_current
               data['master']['duty'] = duty_cycle
               data['master']['temp'] = mos_temp
+              data['master']['temp_motor'] = motor_temp
               data['battery_voltage'] = volt
               #data['battery_level'] = battery_level
               #data['odometer'] = odometer
@@ -446,11 +448,13 @@ def read_serial(
             real_payload = payload[1:]
             parsed = parse_vesc_payload(real_payload, forwarded=True)
             if parsed:
-              rpm, input_current, duty_cycle, volt, motor_current, mos_temp, battery_level, odometer = parsed
+              rpm, input_current, duty_cycle, volt, motor_current, mos_temp, motor_temp, battery_level, odometer = parsed
               data['slave']['motor_current'] = motor_current
               data['slave']['battery_current'] = input_current
               data['slave']['duty'] = duty_cycle
               data['slave']['temp'] = mos_temp
+              data['slave']['temp_motor'] = motor_temp
+
 
     except Exception as e:
       print("Ошибка чтения данных:", e)
@@ -928,8 +932,8 @@ while running:
     border_r = 10
     pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
     draw_text(screen, f"МК", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
-    draw_text(screen, f"?°", font_small, GREEN_COLOR, WIDTH * 0.25, temp_y)
-    draw_text(screen, f"?°", font_small, GREEN_COLOR, WIDTH * 0.4, temp_y)
+    draw_text(screen, f"{int(data['slave']['temp_motor'])}°", font_small, GREEN_COLOR, WIDTH * 0.25, temp_y)
+    draw_text(screen, f"{int(data['master']['temp_motor'])}°", font_small, GREEN_COLOR, WIDTH * 0.4, temp_y)
 
     temp_y += 50
     pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
