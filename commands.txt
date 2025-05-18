@@ -1,0 +1,12 @@
+pactl list short sinks
+nano ~/set_bt_volume.sh
+#!/bin/bash
+sleep 15  # Ждём, пока загрузится PulseAudio и подключатся TWS
+pactl set-sink-volume bluez_sink.XX_XX_XX_XX_XX_XX.a2dp_sink 120%
+chmod +x ~/set_bt_volume.sh
+
+[Desktop Entry]
+Type=Application
+Name=Set Bluetooth Volume
+Exec=/home/pi/set_bt_volume.sh
+X-GNOME-Autostart-enabled=true
