@@ -65,7 +65,7 @@ else:
 
 # Увеличиваем громкость TWS
 def increase_tws_volume():
-  sink_name = "bluez_output.41_42_D4_2C_8B_75_1"
+  sink_name = "bluez_output.41_42_D4_2C_8B_75.1"
 
   # Ждём, пока PipeWire активируется и sink появится
   time.sleep(10)
