@@ -34,6 +34,8 @@ PREV_VALS = {
     'external_temp_2': 0,
     'external_temp_3': 0,
   },
+  'motor1_temp': 0,
+  'motor2_temp': 0
 }
 
 import platform
@@ -969,6 +971,7 @@ while running:
     bat_temp_2 = get_battery_temp_color(int(data['bms_temp']['external_temp_1']))
     draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°", font_small, bat_temp_2, WIDTH * 0.9, temp_y)
 
+    # temp alarm
     if data['bms_temp']['mosfet_temp'] >= 40 and PREV_VALS['bms_temp']['mosfet_temp'] < 40:
       add_speak_message(f"Температура мосфетов БМС достигла... {data['bms_temp']['mosfet_temp']} градусов")
     if data['bms_temp']['mosfet_temp'] >= 60 and PREV_VALS['bms_temp']['mosfet_temp'] < 60:
@@ -986,6 +989,21 @@ while running:
     if data['bms_temp']['external_temp_1'] >= 60 and PREV_VALS['bms_temp']['external_temp_1'] < 60:
       add_speak_message(f"Внимание... Температура батареи датчик 2... достигла... {data['bms_temp']['external_temp_1']} градусов")
 
+    if data['slave']['temp_motor'] >= 40 and PREV_VALS['slave']['temp_motor'] < 40:
+      add_speak_message(f"Температура переднего колеса достигла... {data['slave']['temp_motor']} градусов")
+    if data['slave']['temp_motor'] >= 60 and PREV_VALS['slave']['temp_motor'] < 60:
+      add_speak_message(f"Внимание... Температура переднего колеса достигла... {data['slave']['temp_motor']} градусов")
+    if data['slave']['temp_motor'] >= 70 and PREV_VALS['slave']['temp_motor'] < 70:
+      add_speak_message(f"Перегрев... Температура переднего колеса достигла... {data['slave']['temp_motor']} градусов")
+    if data['master']['temp_motor'] >= 40 and PREV_VALS['master']['temp_motor'] < 40:
+      add_speak_message(f"Температура заднего колеса достигла... {data['master']['temp_motor']} градусов")
+    if data['master']['temp_motor'] >= 60 and PREV_VALS['master']['temp_motor'] < 60:
+      add_speak_message(f"Внимание... Температура заднего колеса достигла... {data['master']['temp_motor']} градусов")
+    if data['master']['temp_motor'] >= 70 and PREV_VALS['master']['temp_motor'] < 70:
+      add_speak_message(f"Перегрев... Температура заднего колеса достигла... {data['master']['temp_motor']} градусов")
+
+
+
     PREV_VALS['bms_temp'] = {
       'mosfet_temp': data['bms_temp']['mosfet_temp'],
       'balance_temp': data['bms_temp']['balance_temp'],
@@ -994,6 +1012,10 @@ while running:
       'external_temp_2': data['bms_temp']['external_temp_2'],
       'external_temp_3': data['bms_temp']['external_temp_3'],
     }
+
+    PREV_VALS['motor1_temp'] = data['slave']['temp_motor']
+    PREV_VALS['motor2_temp'] = data['master']['temp_motor']
+
     #ВОЛЬТАЖ
 
     # 4. Вольтаж батареи и заряд
