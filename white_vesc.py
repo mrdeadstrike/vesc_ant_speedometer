@@ -63,6 +63,18 @@ else:
   print("🤔 Что-то другое")
   font_y_shift += 2
 
+# Увеличиваем громкость TWS
+def increase_tws_volume():
+  sink_name = "bluez_output.41_42_D4_2C_8B_75_1"
+
+  # Ждём, пока PipeWire активируется и sink появится
+  time.sleep(10)
+
+  # Устанавливаем громкость
+  subprocess.run(["pactl", "set-sink-volume", sink_name, "110%"])
+  add_speak_message("К поездке все готово")
+
+threading.Thread(target=increase_tws_volume, daemon=True).start()
 
 
 # Данные контроллеров
