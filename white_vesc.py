@@ -1339,9 +1339,7 @@ while running:
     #  'trip_start_bettery_perc': 0,
     #}
 
-    sec_to_exit = 60#5
-    if full_off:
-      sec_to_exit = 60
+    sec_to_exit = 20#5
 
     timer_off_t = f"До выключения: {sec_to_exit - (time.time() - timer_power_off):.0f} сек"
     timer_off = font_small.render(timer_off_t, True, (0, 0, 0))
