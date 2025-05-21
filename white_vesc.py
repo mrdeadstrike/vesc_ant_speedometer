@@ -896,6 +896,7 @@ while running:
       trip_info = trip_info.replace(":", " и ")
     add_speak_message("Время в пути " + trip_info)
     add_speak_message("Приехал " + trip_end_datetime_str_full)
+    add_speak_message("Максимальные температуры моторов..." + f"{data_trip['motor1_max_temp']} ... и {data_trip['motor2_max_temp']} градусов")
     #add_speak_message("Расстояние " + f"{data['trip_odometer']:.1f}".replace(".", " и ") + " километров")
     #add_speak_message("Средняя скорость " + f"{data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
     add_speak_message("Максимальная скорость " + f"{int(data_trip['max_speed'])} километров в час")
@@ -1336,11 +1337,11 @@ while running:
     draw_text_center(screen, "Статистика поездки:", font_small, GRAY, y_trip_start)
     y_trip_start += 60
     y_trip_shift = 40
-    draw_text_left(screen, "Приехал ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, trip_end_datetime_str, font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
     draw_text_left(screen, "Время в пути ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, data['trip_time'], font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += y_trip_shift
+    draw_text_left(screen, "Приехал ", font_small, GRAY, 10, y_trip_start - 2)
+    draw_text_right(screen, trip_end_datetime_str, font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += y_trip_shift
     draw_text_left(screen, "Расстояние ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data['trip_odometer']:.1f} км", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
@@ -1352,7 +1353,10 @@ while running:
     draw_text_right(screen, f"{int(data_trip['max_speed'])} км/ч", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += y_trip_shift
     draw_text_left(screen, "Лучшее 0-60 ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{data_trip['best_time_0_60']:.2f} с", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    time_0_60 = f"{data_trip['best_time_0_60']:.2f} с"
+    if int(data_trip['best_time_0_60']):
+      time_0_60 = "-"
+    draw_text_right(screen, time_0_60, font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += y_trip_shift
     draw_text_left(screen, "Макс. мощность ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{int(data_trip['max_power'])} Вт", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
