@@ -79,7 +79,8 @@ def increase_tws_volume():
   subprocess.run(["pactl", "set-sink-volume", sink_name, "120%"])
   add_speak_message("К поездке все готово")
 
-threading.Thread(target=increase_tws_volume, daemon=True).start()
+if IS_RASPBERY:
+  threading.Thread(target=increase_tws_volume, daemon=True).start()
 
 
 # Данные контроллеров
