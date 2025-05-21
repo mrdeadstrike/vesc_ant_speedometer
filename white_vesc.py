@@ -139,6 +139,8 @@ data_trip = {
   'min_cell_v': 5,
   'min_cell_v_index': 0,
   'max_unit_diff': 0,
+  'motor1_max_temp': 0,
+  'motor2_max_temp': 0,
 }
 
 
@@ -1211,13 +1213,14 @@ while running:
       minutes = int(trip_time // 60)
       seconds = int(trip_time % 60)
 
-      # Озвучиваем статистику поездки каждую минуту
+      ############ ОЗВУЧКА ######### Озвучиваем статистику поездки каждую минуту ###########
       if PREV_VALS['trip_mins'] != minutes:
         PREV_VALS['trip_mins'] = minutes
         add_speak_message(f"Время в пути {minutes} минут")
         if minutes == 15:
           add_speak_message(f"Опять еле едем из-за долбаебов на дороге")
-        add_speak_message(f"Средняя скорость" + f" {data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
+        add_speak_message(f"Температура моторов... {data_trip['motor1_max_temp']}... и {data_trip['motor1_max_temp']} градусов")
+        #add_speak_message(f"Средняя скорость" + f" {data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
         add_speak_message(f"Заряд {data['battery_level']} процентов")
         add_speak_message(f"Слабейший ряд... {data['bad_cell_min_peak_index'] + 1}... минимальный заряд... " + f"{data['bad_cell_min_peak']:.2f}".replace(".", " и ") + "... вольт")
         
@@ -1282,6 +1285,11 @@ while running:
 
     if data_trip['max_unit_diff'] < data['unit_diff']:
       data_trip['max_unit_diff'] = data['unit_diff']
+    
+    if data_trip['motor1_max_temp'] < data['slave']['temp_motor']:
+      data_trip['motor1_max_temp'] = data['slave']['temp_motor']
+    if data_trip['motor2_max_temp'] < data['master']['temp_motor']:
+      data_trip['motor2_max_temp'] = data['master']['temp_motor']
 
     # Кнопка выключения программы
     button_rect = pygame.Rect(72, 12, 40, 40)
