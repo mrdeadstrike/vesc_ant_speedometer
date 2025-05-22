@@ -896,7 +896,7 @@ while running:
       trip_info = trip_info.replace(":", " и ")
     add_speak_message("Время в пути " + trip_info)
     add_speak_message("Приехал " + trip_end_datetime_str_full)
-    add_speak_message("Максимальные температуры моторов..." + f"{data_trip['motor1_max_temp']} ... и {data_trip['motor2_max_temp']} градусов")
+    add_speak_message("Максимальные температуры моторов..." + f"{int(data_trip['motor1_max_temp'])} ... и {int(data_trip['motor2_max_temp'])} градусов")
     #add_speak_message("Расстояние " + f"{data['trip_odometer']:.1f}".replace(".", " и ") + " километров")
     #add_speak_message("Средняя скорость " + f"{data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
     add_speak_message("Максимальная скорость " + f"{int(data_trip['max_speed'])} километров в час")
@@ -1220,7 +1220,7 @@ while running:
         add_speak_message(f"Время в пути {minutes} минут")
         if minutes == 15:
           add_speak_message(f"Опять еле едем из-за долбаебов на дороге")
-        add_speak_message(f"Температура моторов... {data_trip['motor1_max_temp']}... и {data_trip['motor1_max_temp']} градусов")
+        add_speak_message(f"Температура моторов... {int(data_trip['motor1_max_temp'])}... и {int(data_trip['motor2_max_temp'])} градусов")
         #add_speak_message(f"Средняя скорость" + f" {data['trip_avg_speed']:.1f}".replace(".", " и ") + " километров в час")
         add_speak_message(f"Заряд {data['battery_level']} процентов")
         add_speak_message(f"Слабейший ряд... {data['bad_cell_min_peak_index'] + 1}... минимальный заряд... " + f"{data['bad_cell_min_peak']:.2f}".replace(".", " и ") + "... вольт")
@@ -1332,6 +1332,7 @@ while running:
         print(">>> Запись началась")
 
   #################### PAGE TRIP_STAT ###########################
+  # добавить температуру моторов
   elif PAGE_NAME == "TRIP_STAT":
     y_trip_start = 80
     draw_text_center(screen, "Статистика поездки:", font_small, GRAY, y_trip_start)
@@ -1342,6 +1343,9 @@ while running:
     y_trip_start += y_trip_shift
     draw_text_left(screen, "Приехал ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, trip_end_datetime_str, font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    y_trip_start += y_trip_shift
+    draw_text_left(screen, "Макс. темп. моторов ", font_small, GRAY, 10, y_trip_start - 2)
+    draw_text_right(screen, f"{int(data_trip['motor1_max_temp'])}° {int(data_trip['motor2_max_temp'])}°", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += y_trip_shift
     draw_text_left(screen, "Расстояние ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{data['trip_odometer']:.1f} км", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
