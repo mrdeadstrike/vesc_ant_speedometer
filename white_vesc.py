@@ -1156,7 +1156,7 @@ while running:
       measuring = False
       zamer_success = True
 
-    if int(data['speed']) == 0 or (not zamer_success and ((time.time() - start_time) > 25)):
+    if int(data['speed']) == 0 or (not zamer_success and (start_time is not None and (time.time() - start_time) > 25)):
       start_time = None
       measured_time = None
       if zamer_success or int(data['speed']) == 0:
