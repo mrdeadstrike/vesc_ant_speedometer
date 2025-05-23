@@ -39,6 +39,10 @@ PREV_VALS = {
   'motor1_temp_get_last_time': time.time(),
   'motor2_temp': 0,
   'motor2_temp_get_last_time': time.time(),
+  'mosfet_temp_get_last_time': time.time(),
+  'balance_temp_get_last_time': time.time(),
+  'external_temp_0_get_last_time': time.time(),
+  'external_temp_1_get_last_time': time.time(),
 }
 
 import platform
@@ -990,26 +994,41 @@ while running:
 
     # temp alarm
     # bms
-    if data['bms_temp']['mosfet_temp'] >= 40 and PREV_VALS['bms_temp']['mosfet_temp'] < 40:
-      add_speak_message(f"Температура мосфетов БМС достигла... {data['bms_temp']['mosfet_temp']} градусов")
-    if data['bms_temp']['mosfet_temp'] >= 55 and PREV_VALS['bms_temp']['mosfet_temp'] < 55:
-      add_speak_message(f"Внимание... Температура мосфетов БМС достигла... {data['bms_temp']['mosfet_temp']} градусов")
-    if data['bms_temp']['balance_temp'] >= 40 and PREV_VALS['bms_temp']['balance_temp'] < 40:
-      add_speak_message(f"Температура балансиров БМС достигла... {data['bms_temp']['balance_temp']} градусов")
-    if data['bms_temp']['balance_temp'] >= 55 and PREV_VALS['bms_temp']['balance_temp'] < 55:
-      add_speak_message(f"Внимание... Температура балансиров БМС достигла... {data['bms_temp']['balance_temp']} градусов")
-    if data['bms_temp']['external_temp_0'] >= 40 and PREV_VALS['bms_temp']['external_temp_0'] < 40:
-      add_speak_message(f"Температура батареи датчик 1... достигла... {data['bms_temp']['external_temp_0']} градусов")
-    if data['bms_temp']['external_temp_0'] >= 55 and PREV_VALS['bms_temp']['external_temp_0'] < 55:
-      add_speak_message(f"Внимание... Температура батареи датчик 1... достигла... {data['bms_temp']['external_temp_0']} градусов")
-    if data['bms_temp']['external_temp_1'] >= 40 and PREV_VALS['bms_temp']['external_temp_1'] < 40:
-      add_speak_message(f"Температура батареи датчик 2... достигла... {data['bms_temp']['external_temp_1']} градусов")
-    if data['bms_temp']['external_temp_1'] >= 55 and PREV_VALS['bms_temp']['external_temp_1'] < 55:
-      add_speak_message(f"Внимание... Температура батареи датчик 2... достигла... {data['bms_temp']['external_temp_1']} градусов")
+    cur_t = time.time()
+    if cur_t - PREV_VALS['mosfet_temp_get_last_time'] > 30:
+      if data['bms_temp']['mosfet_temp'] >= 40 and PREV_VALS['bms_temp']['mosfet_temp'] < 40:
+        add_speak_message(f"Температура мосфетов БМС достигла... {data['bms_temp']['mosfet_temp']} градусов")
+        PREV_VALS['mosfet_temp_get_last_time'] = cur_t
+      if data['bms_temp']['mosfet_temp'] >= 55 and PREV_VALS['bms_temp']['mosfet_temp'] < 55:
+        add_speak_message(f"Внимание... Температура мосфетов БМС достигла... {data['bms_temp']['mosfet_temp']} градусов")
+        PREV_VALS['mosfet_temp_get_last_time'] = cur_t
+
+    if cur_t - PREV_VALS['balance_temp_get_last_time'] > 30:
+      if data['bms_temp']['balance_temp'] >= 40 and PREV_VALS['bms_temp']['balance_temp'] < 40:
+        add_speak_message(f"Температура балансиров БМС достигла... {data['bms_temp']['balance_temp']} градусов")
+        PREV_VALS['balance_temp_get_last_time'] = cur_t
+      if data['bms_temp']['balance_temp'] >= 55 and PREV_VALS['bms_temp']['balance_temp'] < 55:
+        add_speak_message(f"Внимание... Температура балансиров БМС достигла... {data['bms_temp']['balance_temp']} градусов")
+        PREV_VALS['balance_temp_get_last_time'] = cur_t
+
+    if cur_t - PREV_VALS['external_temp_0_get_last_time'] > 30:
+      if data['bms_temp']['external_temp_0'] >= 40 and PREV_VALS['bms_temp']['external_temp_0'] < 40:
+        add_speak_message(f"Температура батареи датчик 1... достигла... {data['bms_temp']['external_temp_0']} градусов")
+        PREV_VALS['external_temp_0_get_last_time'] = cur_t
+      if data['bms_temp']['external_temp_0'] >= 55 and PREV_VALS['bms_temp']['external_temp_0'] < 55:
+        add_speak_message(f"Внимание... Температура батареи датчик 1... достигла... {data['bms_temp']['external_temp_0']} градусов")
+        PREV_VALS['external_temp_0_get_last_time'] = cur_t
+
+    if cur_t - PREV_VALS['external_temp_1_get_last_time'] > 30:
+      if data['bms_temp']['external_temp_1'] >= 40 and PREV_VALS['bms_temp']['external_temp_1'] < 40:
+        add_speak_message(f"Температура батареи датчик 2... достигла... {data['bms_temp']['external_temp_1']} градусов")
+        PREV_VALS['external_temp_1_get_last_time'] = cur_t
+      if data['bms_temp']['external_temp_1'] >= 55 and PREV_VALS['bms_temp']['external_temp_1'] < 55:
+        add_speak_message(f"Внимание... Температура батареи датчик 2... достигла... {data['bms_temp']['external_temp_1']} градусов")
+        PREV_VALS['external_temp_1_get_last_time'] = cur_t
 
     # температура колес дергается поэтому после смены ждем время до следующего уведомления
-    cur_t = time.time()
-    if cur_t - PREV_VALS['motor1_temp_get_last_time'] > 15:
+    if cur_t - PREV_VALS['motor1_temp_get_last_time'] > 30:
       if data['slave']['temp_motor'] >= 60 and PREV_VALS['motor1_temp'] < 60:
         add_speak_message(f"Температура переднего колеса достигла... {data['slave']['temp_motor']} градусов")
         PREV_VALS['motor1_temp_get_last_time'] = cur_t
@@ -1023,7 +1042,7 @@ while running:
         add_speak_message(f"Опсано перегрев... Температура переднего колеса достигла... {data['slave']['temp_motor']} градусов")
         PREV_VALS['motor1_temp_get_last_time'] = cur_t
 
-    if cur_t - PREV_VALS['motor2_temp_get_last_time'] > 15:
+    if cur_t - PREV_VALS['motor2_temp_get_last_time'] > 30:
       if data['master']['temp_motor'] >= 60 and PREV_VALS['motor2_temp'] < 60:
         add_speak_message(f"Температура заднего колеса достигла... {data['master']['temp_motor']} градусов")
         PREV_VALS['motor2_temp_get_last_time'] = cur_t
