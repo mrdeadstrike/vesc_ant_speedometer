@@ -1030,30 +1030,30 @@ while running:
     # температура колес дергается поэтому после смены ждем время до следующего уведомления
     if cur_t - PREV_VALS['motor1_temp_get_last_time'] > 30:
       if data['slave']['temp_motor'] >= 60 and PREV_VALS['motor1_temp'] < 60:
-        add_speak_message(f"Температура переднего колеса достигла... {data['slave']['temp_motor']} градусов")
+        add_speak_message(f"Температура переднего колеса достигла... {int(data['slave']['temp_motor'])} градусов")
         PREV_VALS['motor1_temp_get_last_time'] = cur_t
       if data['slave']['temp_motor'] >= 80 and PREV_VALS['motor1_temp'] < 80:
-        add_speak_message(f"Температура переднего колеса достигла... {data['slave']['temp_motor']} градусов")
+        add_speak_message(f"Температура переднего колеса достигла... {int(data['slave']['temp_motor'])} градусов")
         PREV_VALS['motor1_temp_get_last_time'] = cur_t
       if data['slave']['temp_motor'] >= 90 and PREV_VALS['motor1_temp'] < 90:
-        add_speak_message(f"Внимание... Температура переднего колеса достигла... {data['slave']['temp_motor']} градусов")
+        add_speak_message(f"Внимание... Температура переднего колеса достигла... {int(data['slave']['temp_motor'])} градусов")
         PREV_VALS['motor1_temp_get_last_time'] = cur_t
       if data['slave']['temp_motor'] >= 100 and PREV_VALS['motor1_temp'] < 100:
-        add_speak_message(f"Опсано перегрев... Температура переднего колеса достигла... {data['slave']['temp_motor']} градусов")
+        add_speak_message(f"Опсано перегрев... Температура переднего колеса достигла... {int(data['slave']['temp_motor'])} градусов")
         PREV_VALS['motor1_temp_get_last_time'] = cur_t
 
     if cur_t - PREV_VALS['motor2_temp_get_last_time'] > 30:
       if data['master']['temp_motor'] >= 60 and PREV_VALS['motor2_temp'] < 60:
-        add_speak_message(f"Температура заднего колеса достигла... {data['master']['temp_motor']} градусов")
+        add_speak_message(f"Температура заднего колеса достигла... {int(data['master']['temp_motor'])} градусов")
         PREV_VALS['motor2_temp_get_last_time'] = cur_t
       if data['master']['temp_motor'] >= 80 and PREV_VALS['motor2_temp'] < 80:
-        add_speak_message(f"Температура заднего колеса достигла... {data['master']['temp_motor']} градусов")
+        add_speak_message(f"Температура заднего колеса достигла... {int(data['master']['temp_motor'])} градусов")
         PREV_VALS['motor2_temp_get_last_time'] = cur_t
       if data['master']['temp_motor'] >= 90 and PREV_VALS['motor2_temp'] < 90:
-        add_speak_message(f"Внимание... Температура заднего колеса достигла... {data['master']['temp_motor']} градусов")
+        add_speak_message(f"Внимание... Температура заднего колеса достигла... {int(data['master']['temp_motor'])} градусов")
         PREV_VALS['motor2_temp_get_last_time'] = cur_t
       if data['master']['temp_motor'] >= 100 and PREV_VALS['motor2_temp'] < 100:
-        add_speak_message(f"Опасно перегрев... Температура заднего колеса достигла... {data['master']['temp_motor']} градусов")
+        add_speak_message(f"Опасно перегрев... Температура заднего колеса достигла... {int(data['master']['temp_motor'])} градусов")
         PREV_VALS['motor2_temp_get_last_time'] = cur_t
 
 
