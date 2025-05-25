@@ -442,8 +442,8 @@ def read_serial(
               data['master']['motor_current'] = motor_current
               data['master']['battery_current'] = input_current
               data['master']['duty'] = duty_cycle
-              data['master']['temp'] = mos_temp
-              data['master']['temp_motor'] = motor_temp
+              data['master']['temp'] = int(mos_temp)
+              data['master']['temp_motor'] = int(motor_temp)
               data['battery_voltage'] = volt
               #data['battery_level'] = battery_level
               #data['odometer'] = odometer
@@ -476,8 +476,8 @@ def read_serial(
               data['slave']['motor_current'] = motor_current
               data['slave']['battery_current'] = input_current
               data['slave']['duty'] = duty_cycle
-              data['slave']['temp'] = mos_temp
-              data['slave']['temp_motor'] = motor_temp
+              data['slave']['temp'] = int(mos_temp)
+              data['slave']['temp_motor'] = int(motor_temp)
 
 
     except Exception as e:
