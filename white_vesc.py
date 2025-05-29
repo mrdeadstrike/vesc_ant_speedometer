@@ -482,6 +482,10 @@ def read_serial(
 
     except Exception as e:
       try:
+        try:
+          ser.close()
+        except:
+          ser = None
         add_speak_message("Попытка восстановить связь с контроллерами")
         ser = serial.Serial(port_name, baudrate, timeout=0.1)
         add_speak_message("Связь с контроллерами восстановлена")
