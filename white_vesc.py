@@ -481,7 +481,13 @@ def read_serial(
 
 
     except Exception as e:
-      print("Ошибка чтения данных:", e)
+      try:
+        add_speak_message("Попытка восстановить связь с контроллерами")
+        ser = serial.Serial(port_name, baudrate, timeout=0.1)
+        add_speak_message("Связь с контроллерами восстановлена")
+      except:
+        time.sleep(5)
+      #print("Ошибка чтения данных:", e)
 
 threading.Thread(target=read_serial, daemon=True).start()
 
