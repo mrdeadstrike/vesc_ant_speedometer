@@ -207,7 +207,7 @@ def handle_command(command):
     add_speak_message(f"Батарея датчик 1... {data['bms_temp']['external_temp_1']} градусов")
     add_speak_message(f"Батарея датчик 2... {data['bms_temp']['external_temp_2']} градусов")
   elif command == "напряжени":
-    add_speak_message(f"Напряжение " + f"{data['battery_voltage']:.1f}".replace(".", " и ") + " вольт")
+    add_speak_message(f"Напряжение " + f"{data['bms_voltage']:.1f}".replace(".", " и ") + " вольт")
     add_speak_message(f"Просадка " + f"{data['voltage_down']:.1f}".replace(".", " и ") + " вольт")
     add_speak_message(f"Слабейший ряд... " + f"{data['bad_cell_index'] + 1}")
     add_speak_message(f"минимальный заряд... " + f"{data['bad_cell_min']:.2f}".replace(".", " и ") + " вольт")
@@ -852,7 +852,7 @@ def SetDebugValues():
   data['bms_current'] = 50 * changeV
   data['speed'] = 70 * changeV
   data['master']['duty'] = 300 * changeV
-  data['battery_voltage'] = 60 - 10 * changeV
+  data['bms_voltage'] = 60 - 10 * changeV
   if data['master']['duty'] > 200:
     data['master']['duty'] = 200
 
@@ -1088,9 +1088,9 @@ while running:
     v_y = 450
     # запоминаем вольтаж без нагрузки и рекуперации
     if int(summ_current) == 0:
-      data['v_without_nagruzka'] = data['battery_voltage']
+      data['v_without_nagruzka'] = data['bms_voltage']
 
-    voltage_down = (data['battery_voltage'] - data['v_without_nagruzka'])
+    voltage_down = (data['bms_voltage'] - data['v_without_nagruzka'])
     data['voltage_down'] = voltage_down
     voltage_down_color = GREEN_COLOR
     if voltage_down < -5:
@@ -1099,11 +1099,11 @@ while running:
       voltage_down_color = ORANGE_COLOR
 
     pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 27, WIDTH - 30, 54), width=2, border_radius=border_r)
-    draw_text(screen, f"{data['battery_voltage']:.1f}", font_medium, (0, 100, 255), WIDTH * 0.1275, v_y)
+    draw_text(screen, f"{data['bms_voltage']:.1f}", font_medium, (0, 100, 255), WIDTH * 0.1275, v_y)
     draw_text(screen, f"{voltage_down:.1f}", font_medium, voltage_down_color, WIDTH * 0.38, v_y)
     #draw_text_left(screen, f"{data['v_without_nagruzka']:.1f}V", font_medium, (0, 100, 255), WIDTH * 0.5, v_y)
 
-    #battery_text = font_medium.render(f"{data['battery_voltage']:.1f}V  {data['v_without_nagruzka']:.1f}V {int(data['battery_level'])}%", True, (0, 100, 255))
+    #battery_text = font_medium.render(f"{data['bms_voltage']:.1f}V  {data['v_without_nagruzka']:.1f}V {int(data['battery_level'])}%", True, (0, 100, 255))
     #battery_rect = battery_text.get_rect(center=(WIDTH//2 - 40, 800 + boostDown))
     #screen.blit(battery_text, battery_rect)
 
@@ -1112,18 +1112,18 @@ while running:
       voltages = [v for v, _ in voltage_percent_table]
       percents = [p for _, p in voltage_percent_table]
 
-      if data['battery_voltage'] >= voltages[0]:
+      if data['bms_voltage'] >= voltages[0]:
         data['battery_level'] = 100
-      elif data['battery_voltage'] <= voltages[-1]:
+      elif data['bms_voltage'] <= voltages[-1]:
         data['battery_level'] = 0
       else:
         data['battery_level'] = 0
         for i in range(len(voltages) - 1):
           v_high, v_low = voltages[i], voltages[i + 1]
           p_high, p_low = percents[i], percents[i + 1]
-          if v_high >= data['battery_voltage'] >= v_low:
+          if v_high >= data['bms_voltage'] >= v_low:
             # Линейная интерполяция между двумя ближайшими точками
-            ratio = (data['battery_voltage'] - v_low) / (v_high - v_low)
+            ratio = (data['bms_voltage'] - v_low) / (v_high - v_low)
             data['battery_level'] = int(p_low + ratio * (p_high - p_low))
             break
 
