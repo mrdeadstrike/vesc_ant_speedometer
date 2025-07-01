@@ -1388,7 +1388,7 @@ while running:
     y_trip_start += y_trip_shift
     draw_text_left(screen, "Лучшее 0-60 ", font_small, GRAY, 10, y_trip_start - 2)
     time_0_60 = f"{data_trip['best_time_0_60']:.2f} с"
-    if int(data_trip['best_time_0_60']):
+    if int(data_trip['best_time_0_60']) == 100:
       time_0_60 = "-"
     draw_text_right(screen, time_0_60, font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += y_trip_shift
