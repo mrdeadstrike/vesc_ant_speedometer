@@ -1374,7 +1374,7 @@ while running:
     draw_text_left(screen, "Приехал ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, trip_end_datetime_str, font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += y_trip_shift
-    draw_text_left(screen, "Макс. темп. моторов ", font_small, GRAY, 10, y_trip_start - 2)
+    draw_text_left(screen, "Макс. t° моторов ", font_small, GRAY, 10, y_trip_start - 2)
     draw_text_right(screen, f"{int(data_trip['motor1_max_temp'])}° {int(data_trip['motor2_max_temp'])}°", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
     y_trip_start += y_trip_shift
     draw_text_left(screen, "Расстояние ", font_small, GRAY, 10, y_trip_start - 2)
