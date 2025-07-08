@@ -481,6 +481,7 @@ def read_serial(
 
 
     except Exception as e:
+      add_speak_message("Ошибка 1")
       try:
         try:
           ser.close()
@@ -491,6 +492,7 @@ def read_serial(
         ser = serial.Serial(port_name, baudrate, timeout=0.1)
         add_speak_message("Связь с контроллерами восстановлена")
       except:
+        add_speak_message("Ошибка 2")
         time.sleep(5)
       #print("Ошибка чтения данных:", e)
 
@@ -593,6 +595,7 @@ def read_bms(
       try:
         read_bms_data(ser)
       except:
+        add_speak_message("Ошибка 3")
         try:
           ser.close()
         except:
