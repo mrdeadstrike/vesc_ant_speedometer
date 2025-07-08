@@ -424,6 +424,7 @@ def read_serial(
       #GET_INFO
       ser.write(packet_master)
       header = ser.read(2)
+      controllerAnswerError = True
       if header and header[0] == 2:
         size = header[1]
         frame = ser.read(size + 3)
@@ -434,6 +435,7 @@ def read_serial(
             real_payload = payload[1:]
             parsed = parse_vesc_payload(real_payload, forwarded=False)
             if parsed:
+              controllerAnswerError = False
               rpm, input_current, duty_cycle, volt, motor_current, mos_temp, motor_temp, battery_level, odometer = parsed
               wheel_rpm = rpm
               speed_mps = (wheel_rpm * wheel_circumference_m) / 60
@@ -448,6 +450,9 @@ def read_serial(
               #data['battery_level'] = battery_level
               #data['odometer'] = odometer
 
+      if controllerAnswerError:
+        add_speak_message("Ошибка данных контроллера мастер")
+
       time.sleep(0.1)#0.05
 
       slave_id = 15
@@ -459,6 +464,7 @@ def read_serial(
       #ser.write(packet)
       #response = ser.read(1024)
       #print(response)
+      controllerAnswerError = True
       ser.write(packet)
       header = ser.read(2)
       if header and header[0] == 2:
@@ -472,6 +478,7 @@ def read_serial(
             real_payload = payload[1:]
             parsed = parse_vesc_payload(real_payload, forwarded=True)
             if parsed:
+              controllerAnswerError = False
               rpm, input_current, duty_cycle, volt, motor_current, mos_temp, motor_temp, battery_level, odometer = parsed
               data['slave']['motor_current'] = motor_current
               data['slave']['battery_current'] = input_current
@@ -479,14 +486,18 @@ def read_serial(
               data['slave']['temp'] = int(mos_temp)
               data['slave']['temp_motor'] = int(motor_temp)
 
+      if controllerAnswerError:
+        add_speak_message("Ошибка данных контроллера слейв")
 
+      time.sleep(0.1)#0.05
     except Exception as e:
-      add_speak_message("Ошибка 1")
       try:
         try:
           ser.close()
+          add_speak_message("Ошибка контроллера 1")
         except:
           ser = None
+          add_speak_message("Ошибка контроллера 2")
         time.sleep(5)
         add_speak_message("Попытка восстановить связь с контроллерами")
         ser = serial.Serial(port_name, baudrate, timeout=0.1)
@@ -535,7 +546,9 @@ def read_bms_data(ser):
 
     if len(bms_data) != 140 or not bms_data.startswith(b'\xAA\x55\xAA\xFF'):
       print("❌ Некорректный ответ от BMS")
-      time.sleep(0.1)
+      add_speak_message("Некорректный ответ от BMS")
+      time.sleep(2)
+      # time.sleep(0.1)
       continue
 
     # Общий вольтаж: bms_data[4] и bms_data[5], шаг 0.1 В
@@ -586,7 +599,9 @@ def read_bms(
         BMS_LOST = True
         try:
           ser.close()
+          add_speak_message("Отладка БМС 1")
         except:
+          add_speak_message("Отладка БМС 2")
           ser = None
         print("Не удалось открыть порт:", e)
         time.sleep(2)
@@ -595,11 +610,12 @@ def read_bms(
       try:
         read_bms_data(ser)
       except:
-        add_speak_message("Ошибка 3")
         try:
           ser.close()
+          add_speak_message("Ошибка БМС 1")
         except:
           ser = None
+          add_speak_message("Ошибка БМС 2")
         BMS_LOST = True
         print("bms lost")
         time.sleep(2)
