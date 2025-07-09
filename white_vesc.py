@@ -156,6 +156,9 @@ voltage_percent_table = [
   (3.555 * 16, 20), (3.477 * 16, 10), (3.405 * 16, 0)
 ]
 
+class SerialGetError(Exception):
+  pass
+
 
 ############## VOICE RECOGNITION ###############
 import subprocess
@@ -452,6 +455,8 @@ def read_serial(
 
       if controllerAnswerError:
         add_speak_message("Ошибка данных контроллера мастер")
+        raise SerialGetError("Error")
+        
 
       time.sleep(0.1)#0.05
 
@@ -488,6 +493,7 @@ def read_serial(
 
       if controllerAnswerError:
         add_speak_message("Ошибка данных контроллера слейв")
+        raise SerialGetError("Error")
 
       time.sleep(0.1)#0.05
     except Exception as e:
@@ -547,9 +553,7 @@ def read_bms_data(ser):
     if len(bms_data) != 140 or not bms_data.startswith(b'\xAA\x55\xAA\xFF'):
       print("❌ Некорректный ответ от BMS")
       add_speak_message("Некорректный ответ от BMS")
-      time.sleep(2)
-      # time.sleep(0.1)
-      continue
+      raise SerialGetError("Error")
 
     # Общий вольтаж: bms_data[4] и bms_data[5], шаг 0.1 В
     total_voltage = (bms_data[4] << 8 | bms_data[5]) * 0.1
