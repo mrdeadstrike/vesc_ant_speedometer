@@ -454,7 +454,7 @@ def read_serial(
               #data['odometer'] = odometer
 
       if controllerAnswerError:
-        add_speak_message("Ошибка данных контроллера мастер")
+        #add_speak_message("Ошибка данных контроллера мастер")
         raise SerialGetError("Error")
         
 
@@ -492,7 +492,7 @@ def read_serial(
               data['slave']['temp_motor'] = int(motor_temp)
 
       if controllerAnswerError:
-        add_speak_message("Ошибка данных контроллера слейв")
+        #add_speak_message("Ошибка данных контроллера слейв")
         raise SerialGetError("Error")
 
       time.sleep(0.1)#0.05
@@ -500,16 +500,16 @@ def read_serial(
       try:
         try:
           ser.close()
-          add_speak_message("Ошибка контроллера 1")
+          #add_speak_message("Ошибка контроллера 1")
         except:
           ser = None
-          add_speak_message("Ошибка контроллера 2")
+          #add_speak_message("Ошибка контроллера 2")
         time.sleep(5)
         add_speak_message("Попытка восстановить связь с контроллерами")
         ser = serial.Serial(port_name, baudrate, timeout=0.1)
         add_speak_message("Связь с контроллерами восстановлена")
       except:
-        add_speak_message("Ошибка 2")
+        #add_speak_message("Ошибка 2")
         time.sleep(5)
       #print("Ошибка чтения данных:", e)
 
@@ -603,9 +603,9 @@ def read_bms(
         BMS_LOST = True
         try:
           ser.close()
-          add_speak_message("Отладка БМС 1")
+          #add_speak_message("Отладка БМС 1")
         except:
-          add_speak_message("Отладка БМС 2")
+          #add_speak_message("Отладка БМС 2")
           ser = None
         print("Не удалось открыть порт:", e)
         time.sleep(2)
@@ -616,10 +616,10 @@ def read_bms(
       except:
         try:
           ser.close()
-          add_speak_message("Ошибка БМС 1")
+          #add_speak_message("Ошибка БМС 1")
         except:
           ser = None
-          add_speak_message("Ошибка БМС 2")
+          #add_speak_message("Ошибка БМС 2")
         BMS_LOST = True
         print("bms lost")
         time.sleep(2)
