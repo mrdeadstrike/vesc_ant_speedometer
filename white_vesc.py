@@ -552,7 +552,7 @@ def read_bms_data(ser):
 
     if len(bms_data) != 140 or not bms_data.startswith(b'\xAA\x55\xAA\xFF'):
       print("❌ Некорректный ответ от BMS")
-      add_speak_message("Некорректный ответ от BMS")
+      #add_speak_message("Некорректный ответ от BMS")
       raise SerialGetError("Error")
 
     # Общий вольтаж: bms_data[4] и bms_data[5], шаг 0.1 В
@@ -1180,10 +1180,10 @@ while running:
       pygame.draw.rect(screen, (200, 200, 200), (15, v_y - 20, WIDTH * 0.34, 42), width=2, border_radius=border_r)
       draw_text(screen, f"BMS Lost", font_small, (255, 0, 0), WIDTH * 0.19, v_y)
       
-    if not PREV_VALS['bms_lost'] and BMS_LOST:
-      add_speak_message("Связь с бмс потеряна")
-    if PREV_VALS['bms_lost'] and not BMS_LOST:
-      add_speak_message("Связь с бмс восстановлена")
+    #if not PREV_VALS['bms_lost'] and BMS_LOST:
+    #  add_speak_message("Связь с бмс потеряна")
+    #if PREV_VALS['bms_lost'] and not BMS_LOST:
+    #  add_speak_message("Связь с бмс восстановлена")
     PREV_VALS['bms_lost'] = BMS_LOST
 
 
