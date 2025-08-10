@@ -962,8 +962,8 @@ while running:
     spacing_x = 250
 
     summ_current = data['slave']['motor_current'] + data['master']['motor_current']
-    if summ_current > 200:
-      summ_current = 200
+    #if summ_current > 200:
+    #  summ_current = 200
     
     up_gap += 20
 
