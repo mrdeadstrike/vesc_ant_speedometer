@@ -460,6 +460,9 @@ def read_serial(
 
       time.sleep(0.1)#0.05
 
+      #slave off temp
+      continue
+
       slave_id = 15
       command = PACKET_INDEX_FOR_VESC#4  # COMM_GET_VALUES
 
@@ -675,7 +678,10 @@ def draw_filled_arc(surface, color, center, radius, start_angle, end_angle, segm
   pygame.draw.rect(surface, color, (165, 150, 270, 120))
 
 def draw_speed_arc(surface, center, radius, speed, max_speed, up_gap):
+  #temp disable slave
   av_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
+  av_duty = int(data['master']['duty'])
+
   #if speed > 0:
   #  if av_duty >= 85:
   #    draw_filled_arc(surface, (255, 180, 180), center, radius, math.pi * 0.15, -math.pi * 1.15)
