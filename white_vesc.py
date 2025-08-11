@@ -679,7 +679,7 @@ def draw_filled_arc(surface, color, center, radius, start_angle, end_angle, segm
 
 def draw_speed_arc(surface, center, radius, speed, max_speed, up_gap):
   #temp disable slave
-  av_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
+  #av_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
   av_duty = int(data['master']['duty'])
 
   #if speed > 0:
@@ -691,7 +691,7 @@ def draw_speed_arc(surface, center, radius, speed, max_speed, up_gap):
   end_angle = math.pi * 1.15 - ((speed) / max_speed) * math.pi * 1.3
   if speed > 0:
     speedColor = GREEN_LIGHT
-    if av_duty >= 85:
+    if av_duty >= 80:
       speedColor = (255, 0, 0)
 
     pygame.draw.arc(surface, speedColor, (center[0]-radius, center[1]-radius, radius*2, radius*2),
@@ -956,7 +956,8 @@ while running:
   PREV_VALS['page_name'] = PAGE_NAME
   if PAGE_NAME == "SPEEDOMETER":
     # 1. Скорость полукруг 
-    average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
+    #average_duty = int((data['slave']['duty'] + data['master']['duty']) / 2)
+    average_duty = int(data['master']['duty'])
     speed_color = (0, 0, 0)
     #if average_duty >= 85:
     #  speed_color = (255, 0, 0)
@@ -973,7 +974,7 @@ while running:
     
     up_gap += 20
 
-    if average_duty >= 85:
+    if average_duty >= 80:
       draw_progress_bar(screen, 15, 40 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (255, 0, 0))
     else:
       draw_progress_bar(screen, 15, 40 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (240, 240, 240), False)
