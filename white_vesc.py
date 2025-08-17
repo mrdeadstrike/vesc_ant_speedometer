@@ -460,9 +460,6 @@ def read_serial(
 
       time.sleep(0.1)#0.05
 
-      #slave off temp
-      continue
-
       slave_id = 15
       command = PACKET_INDEX_FOR_VESC#4  # COMM_GET_VALUES
 
