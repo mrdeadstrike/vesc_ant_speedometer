@@ -408,6 +408,7 @@ def pack_packet_slave(payload):
   crc = struct.pack('>H', crc16_slave(payload))
   return start + length + payload + crc + end
 
+
 ######### CONTROLLER READ ##########
 def read_serial(
                 #port_name='/dev/tty.usbmodem3041', #MAC
@@ -497,21 +498,23 @@ def read_serial(
 
       time.sleep(0.1)#0.05
     except Exception as e:
-      try:
+      while True:
         try:
-          ser.close()
-          #add_speak_message("Ошибка контроллера 1")
+          try:
+            ser.close()
+            #add_speak_message("Ошибка контроллера 1")
+          except:
+            ser = None
+            #add_speak_message("Ошибка контроллера 2")
+          time.sleep(5)
+          #add_speak_message("Попытка восстановить связь с контроллерами")
+          ser = serial.Serial(port_name, baudrate, timeout=0.1)
+          break
+          #add_speak_message("Связь с контроллерами восстановлена")
         except:
-          ser = None
-          #add_speak_message("Ошибка контроллера 2")
-        time.sleep(5)
-        add_speak_message("Попытка восстановить связь с контроллерами")
-        ser = serial.Serial(port_name, baudrate, timeout=0.1)
-        add_speak_message("Связь с контроллерами восстановлена")
-      except:
-        #add_speak_message("Ошибка 2")
-        time.sleep(5)
-      #print("Ошибка чтения данных:", e)
+          #add_speak_message("Ошибка 2")
+          time.sleep(5)
+        #print("Ошибка чтения данных:", e)
 
 threading.Thread(target=read_serial, daemon=True).start()
 
