@@ -410,106 +410,117 @@ def pack_packet_slave(payload):
 
 
 ######### CONTROLLER READ ##########
-def read_serial(
+def read_serial(ser):
+  packet_master = pack_comm_get_values()
+  packet_slave = pack_comm_get_values(can_id=15)
+
+  while True:
+    #GET_INFO
+    ser.write(packet_master)
+    header = ser.read(2)
+    controllerAnswerError = True
+    if header and header[0] == 2:
+      size = header[1]
+      frame = ser.read(size + 3)
+      if len(frame) == size + 3 and frame[-1:] == b'\x03':
+        payload = frame[:-3]
+        crc = frame[-3:-1]
+        if payload and payload[0] == PACKET_INDEX_FOR_VESC:
+          real_payload = payload[1:]
+          parsed = parse_vesc_payload(real_payload, forwarded=False)
+          if parsed:
+            controllerAnswerError = False
+            rpm, input_current, duty_cycle, volt, motor_current, mos_temp, motor_temp, battery_level, odometer = parsed
+            wheel_rpm = rpm
+            speed_mps = (wheel_rpm * wheel_circumference_m) / 60
+            data['speed'] = speed_mps * 3.6
+              
+            data['master']['motor_current'] = motor_current
+            data['master']['battery_current'] = input_current
+            data['master']['duty'] = duty_cycle
+            data['master']['temp'] = int(mos_temp)
+            data['master']['temp_motor'] = int(motor_temp)
+            data['battery_voltage'] = volt
+            #data['battery_level'] = battery_level
+            #data['odometer'] = odometer
+
+    if controllerAnswerError:
+      #add_speak_message("Ошибка данных контроллера мастер")
+      raise SerialGetError("Error")
+      
+
+    time.sleep(0.1)#0.05
+
+    slave_id = 15
+    command = PACKET_INDEX_FOR_VESC#4  # COMM_GET_VALUES
+
+    payload = struct.pack('>BBB', 0x22, slave_id, command)
+    packet = pack_packet_slave(payload)
+
+    #ser.write(packet)
+    #response = ser.read(1024)
+    #print(response)
+    controllerAnswerError = True
+    ser.write(packet)
+    header = ser.read(2)
+    if header and header[0] == 2:
+      size = header[1]
+      frame = ser.read(size + 3)
+      if len(frame) == size + 3 and frame[-1:] == b'\x03':
+        payload = frame[0:-3]
+        #print(payload)
+        crc = frame[-3:-1]
+        if payload and payload[0] == PACKET_INDEX_FOR_VESC:
+          real_payload = payload[1:]
+          parsed = parse_vesc_payload(real_payload, forwarded=True)
+          if parsed:
+            controllerAnswerError = False
+            rpm, input_current, duty_cycle, volt, motor_current, mos_temp, motor_temp, battery_level, odometer = parsed
+            data['slave']['motor_current'] = motor_current
+            data['slave']['battery_current'] = input_current
+            data['slave']['duty'] = duty_cycle
+            data['slave']['temp'] = int(mos_temp)
+            data['slave']['temp_motor'] = int(motor_temp)
+
+    if controllerAnswerError:
+      #add_speak_message("Ошибка данных контроллера слейв")
+      raise SerialGetError("Error")
+
+    time.sleep(0.1)#0.05
+
+
+def read_сontrollers(
                 #port_name='/dev/tty.usbmodem3041', #MAC
                 port_name='/dev/ttyACM0', #Raspbery PI
                 baudrate=115200):
-  while True:
-    try:
-      ser = serial.Serial(port_name, baudrate, timeout=0.1)
-    except Exception as e:
+  if IS_RASPBERY or not IS_MAC:
+    while True:
       try:
-        ser.close()
-      except:
-        ser = None
-      time.sleep(5)
-      continue
+        ser = serial.Serial(port_name, baudrate, timeout=0.1)
+      except Exception as e:
+        try:
+          ser.close()
+          #add_speak_message("Отладка БМС 1")
+        except:
+          #add_speak_message("Отладка БМС 2")
+          ser = None
+        print("Не удалось открыть порт:", e)
+        time.sleep(2)
+        continue
 
-    packet_master = pack_comm_get_values()
-    packet_slave = pack_comm_get_values(can_id=15)
-
-    try:
-      while True:
-        #GET_INFO
-        ser.write(packet_master)
-        header = ser.read(2)
-        controllerAnswerError = True
-        if header and header[0] == 2:
-          size = header[1]
-          frame = ser.read(size + 3)
-          if len(frame) == size + 3 and frame[-1:] == b'\x03':
-            payload = frame[:-3]
-            crc = frame[-3:-1]
-            if payload and payload[0] == PACKET_INDEX_FOR_VESC:
-              real_payload = payload[1:]
-              parsed = parse_vesc_payload(real_payload, forwarded=False)
-              if parsed:
-                controllerAnswerError = False
-                rpm, input_current, duty_cycle, volt, motor_current, mos_temp, motor_temp, battery_level, odometer = parsed
-                wheel_rpm = rpm
-                speed_mps = (wheel_rpm * wheel_circumference_m) / 60
-                data['speed'] = speed_mps * 3.6
-                  
-                data['master']['motor_current'] = motor_current
-                data['master']['battery_current'] = input_current
-                data['master']['duty'] = duty_cycle
-                data['master']['temp'] = int(mos_temp)
-                data['master']['temp_motor'] = int(motor_temp)
-                data['battery_voltage'] = volt
-                #data['battery_level'] = battery_level
-                #data['odometer'] = odometer
-
-        if controllerAnswerError:
-          #add_speak_message("Ошибка данных контроллера мастер")
-          raise SerialGetError("Error")
-          
-
-        time.sleep(0.1)#0.05
-
-        slave_id = 15
-        command = PACKET_INDEX_FOR_VESC#4  # COMM_GET_VALUES
-
-        payload = struct.pack('>BBB', 0x22, slave_id, command)
-        packet = pack_packet_slave(payload)
-
-        #ser.write(packet)
-        #response = ser.read(1024)
-        #print(response)
-        controllerAnswerError = True
-        ser.write(packet)
-        header = ser.read(2)
-        if header and header[0] == 2:
-          size = header[1]
-          frame = ser.read(size + 3)
-          if len(frame) == size + 3 and frame[-1:] == b'\x03':
-            payload = frame[0:-3]
-            #print(payload)
-            crc = frame[-3:-1]
-            if payload and payload[0] == PACKET_INDEX_FOR_VESC:
-              real_payload = payload[1:]
-              parsed = parse_vesc_payload(real_payload, forwarded=True)
-              if parsed:
-                controllerAnswerError = False
-                rpm, input_current, duty_cycle, volt, motor_current, mos_temp, motor_temp, battery_level, odometer = parsed
-                data['slave']['motor_current'] = motor_current
-                data['slave']['battery_current'] = input_current
-                data['slave']['duty'] = duty_cycle
-                data['slave']['temp'] = int(mos_temp)
-                data['slave']['temp_motor'] = int(motor_temp)
-
-        if controllerAnswerError:
-          #add_speak_message("Ошибка данных контроллера слейв")
-          raise SerialGetError("Error")
-
-        time.sleep(0.1)#0.05
-    except Exception as e:
       try:
-        ser.close()
+        read_serial(ser)
       except:
-        ser = None
-      time.sleep(5)
+        try:
+          ser.close()
+          #add_speak_message("Ошибка БМС 1")
+        except:
+          ser = None
+          #add_speak_message("Ошибка БМС 2")
+        time.sleep(2)
+      time.sleep(2)
 
-threading.Thread(target=read_serial, daemon=True).start()
+threading.Thread(target=read_сontrollers, daemon=True).start()
 
 ######### BMS READ ############
 def parse_temperatures(data):
