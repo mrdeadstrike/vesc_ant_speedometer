@@ -1199,7 +1199,7 @@ while running:
 
 
     # блокируем тач при движении
-    if data['speed'] > 0:
+    if int(data['bms_current']) != 0:
       block_touch = True
     else:
       block_touch = False
