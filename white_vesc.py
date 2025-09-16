@@ -1242,70 +1242,73 @@ while running:
       #add_speak_message("секунды")
     zamer_success_prev = zamer_success
 
-    # === УСКОРЕНИЕ: сбор данных каждые 100 мс во время замера ===
-    def draw_acceleration_graph(surface, x, y, width, height, values):
-      # рамка
-      pygame.draw.rect(surface, (220, 220, 220), (x, y, width, height), width=2, border_radius=10)
+    # === УСКОРЕНИЕ: сбор данных каждые 300 мс во время замера ===
+    try:
+      def draw_acceleration_graph(surface, x, y, width, height, values):
+        # рамка
+        pygame.draw.rect(surface, (220, 220, 220), (x, y, width, height), width=2, border_radius=10)
 
-      # базовая линия 0 внизу (отрицательных значений не ожидается)
-      base_y = y + height - 5
-      #pygame.draw.line(surface, (200, 200, 200), (x + 5, base_y), (x + width - 5, base_y), 1)
+        # базовая линия 0 внизу (отрицательных значений не ожидается)
+        base_y = y + height - 5
+        #pygame.draw.line(surface, (200, 200, 200), (x + 5, base_y), (x + width - 5, base_y), 1)
 
-      if not values or len(values) < 2:
-        return
+        if not values or len(values) < 2:
+          return
 
-      # динамический масштаб от 0 до max(values)
-      v_max = max(values)
-      scale = max(v_max, 0.5) * 1.2
+        # динамический масштаб от 0 до max(values)
+        v_max = max(values)
+        scale = max(v_max, 0.5) * 1.2
 
-      # отображаем последние значения так, чтобы умещались по ширине
-      max_points = max(2, width - 10)
-      start_index = 0 if len(values) <= max_points else (len(values) - max_points)
-      view = values[start_index:]
-      if len(view) < 2:
-        return
-      dx = (width - 10) / (len(view) - 1)
-      pts = []
-      for i, a in enumerate(view):
-        a = max(0.0, a)  # защита от отрицательных значений
-        norm = min(1.0, a / scale)
-        py = base_y - int(norm * (height - 10))
-        px = x + 5 + int(i * dx)
-        pts.append((px, py))
-      pygame.draw.lines(surface, (160, 0, 255), False, pts, 5)
+        # отображаем последние значения так, чтобы умещались по ширине
+        max_points = max(2, width - 10)
+        start_index = 0 if len(values) <= max_points else (len(values) - max_points)
+        view = values[start_index:]
+        if len(view) < 2:
+          return
+        dx = (width - 10) / (len(view) - 1)
+        pts = []
+        for i, a in enumerate(view):
+          a = max(0.0, a)  # защита от отрицательных значений
+          norm = min(1.0, a / scale)
+          py = base_y - int(norm * (height - 10))
+          px = x + 5 + int(i * dx)
+          pts.append((px, py))
+        pygame.draw.lines(surface, (160, 0, 255), False, pts, 5)
 
-    # начало/сброс истории при первом кадре активного замера
-    if measuring and accel_last_sample_time is None:
-      accel_history = []
-      accel_last_sample_time = None
-      accel_last_speed_mps = data['speed'] / 3.6
+      # начало/сброс истории при первом кадре активного замера
+      if measuring and accel_last_sample_time is None:
+        accel_history = []
+        accel_last_sample_time = None
+        accel_last_speed_mps = data['speed'] / 3.6
 
-    # сбор значений ускорения во время активного замера
-    if measuring:
-      now_t = time.time()
-      cur_speed_mps = data['speed'] / 3.6
-      if accel_last_sample_time is None:
-        accel_last_sample_time = now_t
-        accel_last_speed_mps = cur_speed_mps
-      elif (now_t - accel_last_sample_time) >= ACCEL_SAMPLE_PERIOD:
-        dt = now_t - accel_last_sample_time
-        if dt > 0:
-          a = (cur_speed_mps - accel_last_speed_mps) / dt
-          if a < 0:
-            a = 0.0
-          accel_history.append(a)
-          if len(accel_history) > ACCEL_HISTORY_MAX:
-            accel_history = accel_history[-ACCEL_HISTORY_MAX:]
-        accel_last_sample_time = now_t
-        accel_last_speed_mps = cur_speed_mps
+      # сбор значений ускорения во время активного замера
+      if measuring:
+        now_t = time.time()
+        cur_speed_mps = data['speed'] / 3.6
+        if accel_last_sample_time is None:
+          accel_last_sample_time = now_t
+          accel_last_speed_mps = cur_speed_mps
+        elif (now_t - accel_last_sample_time) >= ACCEL_SAMPLE_PERIOD:
+          dt = now_t - accel_last_sample_time
+          if dt > 0:
+            a = (cur_speed_mps - accel_last_speed_mps) / dt
+            if a < 0:
+              a = 0.0
+            accel_history.append(a)
+            if len(accel_history) > ACCEL_HISTORY_MAX:
+              accel_history = accel_history[-ACCEL_HISTORY_MAX:]
+          accel_last_sample_time = now_t
+          accel_last_speed_mps = cur_speed_mps
 
-      # рисуем график ускорения внизу экрана
-      g_x, g_y, g_w, g_h = 15, 660, WIDTH * 0.34, 120
-      draw_acceleration_graph(screen, g_x, g_y, g_w, g_h, accel_history)
-    elif measured_time is not None:
-      # после завершения замера продолжаем показывать последний график
-      g_x, g_y, g_w, g_h = 15, 660, WIDTH * 0.34, 120
-      draw_acceleration_graph(screen, g_x, g_y, g_w, g_h, accel_history)
+        # рисуем график ускорения внизу экрана
+        g_x, g_y, g_w, g_h = 15, 660, WIDTH * 0.34, 120
+        draw_acceleration_graph(screen, g_x, g_y, g_w, g_h, accel_history)
+      elif measured_time is not None:
+        # после завершения замера продолжаем показывать последний график
+        g_x, g_y, g_w, g_h = 15, 660, WIDTH * 0.34, 120
+        draw_acceleration_graph(screen, g_x, g_y, g_w, g_h, accel_history)
+    except:
+      pass
 
     # подпись замера 0-60
     razg_boost = 260
