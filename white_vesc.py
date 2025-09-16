@@ -917,7 +917,7 @@ trip_end_datetime_str_full = ""
 accel_history = []          # список значений ускорения (м/с^2)
 accel_last_sample_time = None
 accel_last_speed_mps = 0.0  # последняя скорость в м/с для расчёта dV
-ACCEL_SAMPLE_PERIOD = 0.10  # 100 мс
+ACCEL_SAMPLE_PERIOD = 0.30  # 100 мс
 ACCEL_HISTORY_MAX = 300     # ~30 сек при шаге 0.1с
 
 running = True
