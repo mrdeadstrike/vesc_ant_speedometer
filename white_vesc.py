@@ -1272,7 +1272,7 @@ while running:
         py = base_y - int(norm * (height - 10))
         px = x + 5 + int(i * dx)
         pts.append((px, py))
-      pygame.draw.lines(surface, (0, 160, 0), False, pts, 5)
+      pygame.draw.lines(surface, (160, 0, 255), False, pts, 5)
 
     # начало/сброс истории при первом кадре активного замера
     if measuring and accel_last_sample_time is None:
