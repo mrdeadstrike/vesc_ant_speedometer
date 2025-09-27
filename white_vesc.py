@@ -15,6 +15,8 @@ import urllib
 
 PACKET_INDEX_FOR_VESC = 47#4
 
+CELL_COUNT = 20
+
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
 ORANGE_COLOR = (230, 135, 0)
@@ -114,7 +116,7 @@ data = {
   'trip_speed_sum': 0.0,
   'trip_avg_speed': 0.0,
   'trip_time': "00:00",
-  'cells_v': [3.99, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4.01],
+  'cells_v': [4.0] * CELL_COUNT,
   'unit_diff': 0.0,
   'bad_cell_min': 0.0,
   'bad_cell_min_peak': 5,
@@ -148,12 +150,15 @@ data_trip = {
 }
 
 
-# Таблица для расчёта процента заряда батареи 16S
+# Таблица для расчёта процента заряда батареи (значения на ячейку)
+_per_cell_voltage_percent_table = [
+  (4.17, 100), (4.053, 90), (3.946, 80),
+  (3.845, 70), (3.755, 60),
+  (3.673, 50), (3.624, 40), (3.592, 30),
+  (3.555, 20), (3.477, 10), (3.405, 0)
+]
 voltage_percent_table = [
-  (4.17 * 16, 100), (4.053 * 16, 90), (3.946 * 16, 80),
-  (3.845 * 16, 70), (3.755 * 16, 60),
-  (3.673 * 16, 50), (3.624 * 16, 40), (3.592 * 16, 30),
-  (3.555 * 16, 20), (3.477 * 16, 10), (3.405 * 16, 0)
+  (v * CELL_COUNT, p) for v, p in _per_cell_voltage_percent_table
 ]
 
 class SerialGetError(Exception):
@@ -576,7 +581,7 @@ def read_bms_data(ser):
 
     # Вольтаж каждой ячейки: bms_data[6]..bms_data[69], по 2 байта на ячейку, шаг 1 мВ
     cell_voltages = []
-    for i in range(16):  # для 16s
+    for i in range(CELL_COUNT):  # ANT BMS отдаёт до 32 значений, забираем нужное количество
       high = bms_data[6 + i * 2]
       low = bms_data[6 + i * 2 + 1]
       voltage = (high << 8 | low) * 0.001  # в В
