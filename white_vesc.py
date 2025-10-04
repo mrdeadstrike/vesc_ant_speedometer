@@ -1053,14 +1053,14 @@ while running:
     draw_text(screen, f"{int(data['bms_temp']['balance_temp'])}°", font_small, bal_color, WIDTH * 0.9, temp_y)
 
     temp_y += 50
-    pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
-    draw_text(screen, f"Б", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
-    base_x = WIDTH * 0.68
-    step_x = WIDTH * 0.075
+    block_x = WIDTH * 0.5 + 10
+    block_w = WIDTH * 0.46
+    pygame.draw.rect(screen, (200, 200, 200), (block_x, temp_y - 22, block_w, 44), width=2, border_radius=border_r)
     for idx, key in enumerate(EXTERNAL_TEMP_KEYS):
       sensor_temp = int(data['bms_temp'][key])
       sensor_color = get_battery_temp_color(sensor_temp)
-      draw_text(screen, f"{sensor_temp}°", font_small, sensor_color, base_x + step_x * idx, temp_y)
+      center_x = block_x + block_w * ((idx + 0.5) / len(EXTERNAL_TEMP_KEYS))
+      draw_text(screen, f"{sensor_temp}°", font_small, sensor_color, center_x, temp_y)
 
     # temp alarm
     # bms
