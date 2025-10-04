@@ -804,20 +804,14 @@ def draw_cells_block(screen, startY):
   x_shift = WIDTH * 0.425
   y_shift = startY
 
-  good_cell_index = 0
-  good_cell_max = 0
-  bad_cell_index = 0
-  bad_cell_min = 5
-  for i, cell_v in enumerate(data['cells_v']):
-    if cell_v > good_cell_max:
-      good_cell_max = cell_v
-      good_cell_index = i
-    if cell_v < bad_cell_min:
-      bad_cell_min = cell_v
-      bad_cell_index = i
-
   cells_with_index = list(enumerate(data['cells_v']))
-  sorted_cells = sorted(cells_with_index, key=lambda item: item[1])
+  if not cells_with_index:
+    return
+
+  sorted_cells = sorted(cells_with_index, key=lambda item: (item[1], item[0]))
+
+  bad_cell_index, bad_cell_min = sorted_cells[0]
+  good_cell_index, good_cell_max = sorted_cells[-1]
 
   def chunk_cells(cells):
     padded = list(cells) + [None] * max(0, 4 - len(cells))
@@ -877,7 +871,7 @@ def draw_cells_block(screen, startY):
       draw_text(screen, f"{cell_voltage:.2f}", font_small, cell_v_color, x_shift + left_boost + 90, y_shift + 20)
 
     y_shift += 43
-  
+
   data['unit_diff'] = good_cell_max - bad_cell_min
   data['bad_cell_min'] = bad_cell_min
   data['bad_cell_index'] = bad_cell_index
