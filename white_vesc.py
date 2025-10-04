@@ -801,7 +801,6 @@ def draw_text_right(surface, text, font, color, x, y):
   surface.blit(render, rect)
 
 def draw_cells_block(screen, startY):
-  is_left = True
   x_shift = WIDTH * 0.425
   y_shift = startY
 
@@ -809,8 +808,7 @@ def draw_cells_block(screen, startY):
   good_cell_max = 0
   bad_cell_index = 0
   bad_cell_min = 5
-  for i in range(len(data['cells_v'])):
-    cell_v = data['cells_v'][i]
+  for i, cell_v in enumerate(data['cells_v']):
     if cell_v > good_cell_max:
       good_cell_max = cell_v
       good_cell_index = i
@@ -818,33 +816,67 @@ def draw_cells_block(screen, startY):
       bad_cell_min = cell_v
       bad_cell_index = i
 
-  cell_ind = 0
-  for cell_v in data['cells_v']:
-    left_boost = 10
-    if not is_left:
-      left_boost = 190
+  cells_with_index = list(enumerate(data['cells_v']))
+  sorted_cells = sorted(cells_with_index, key=lambda item: item[1])
 
-    cell_color = (200, 200, 200)
-    cell_index_color = (0, 0, 0)
-    cell_v_color = (150, 150, 150)
-    if cell_ind == good_cell_index:
-      cell_color = GREEN_COLOR
-      cell_index_color = cell_color
-      cell_v_color = cell_color
-    if cell_ind == bad_cell_index:
-      cell_color = (255, 0, 0)
-      cell_index_color = cell_color
-      cell_v_color = cell_color
+  def chunk_cells(cells):
+    padded = list(cells) + [None] * max(0, 4 - len(cells))
+    return [padded[0:2], padded[2:4]]
 
-    pygame.draw.rect(screen, cell_color, (x_shift + left_boost - 15, y_shift + 2, 155, 38), width=2, border_radius=10)
-    draw_text(screen, f"{cell_ind + 1}", font_small, cell_index_color, x_shift + left_boost + 15, y_shift + 20)
-    draw_text(screen, f"{cell_v:.2f}", font_small, cell_v_color, x_shift + left_boost + 90, y_shift + 20)
+  worst_chunks = chunk_cells(sorted_cells[:4])
+  best_chunks = chunk_cells(sorted_cells[-4:])
 
-    if not is_left:
-      y_shift += 43
-      
-    is_left = not is_left
-    cell_ind += 1
+  rows = worst_chunks + [[{'type': 'placeholder'}, {'type': 'placeholder'}]] + best_chunks
+
+  def prepare_slot(entry):
+    if isinstance(entry, dict):
+      return entry
+    if entry is None:
+      return {'type': 'empty'}
+    index, voltage = entry
+    return {
+      'type': 'cell',
+      'index': index,
+      'voltage': voltage,
+    }
+
+  rows = [[prepare_slot(slot) for slot in row] for row in rows]
+
+  for row in rows:
+    for col, slot in enumerate(row):
+      left_boost = 10 if col == 0 else 190
+      rect = (x_shift + left_boost - 15, y_shift + 2, 155, 38)
+
+      if slot['type'] == 'placeholder':
+        pygame.draw.rect(screen, (200, 200, 200), rect, width=2, border_radius=10)
+        draw_text(screen, '...', font_small, (150, 150, 150), x_shift + left_boost + 70, y_shift + 20)
+        continue
+
+      if slot['type'] == 'empty':
+        pygame.draw.rect(screen, (200, 200, 200), rect, width=2, border_radius=10)
+        continue
+
+      cell_index = slot['index']
+      cell_voltage = slot['voltage']
+
+      cell_color = (200, 200, 200)
+      cell_index_color = (0, 0, 0)
+      cell_v_color = (150, 150, 150)
+
+      if cell_index == good_cell_index:
+        cell_color = GREEN_COLOR
+        cell_index_color = cell_color
+        cell_v_color = cell_color
+      if cell_index == bad_cell_index:
+        cell_color = (255, 0, 0)
+        cell_index_color = cell_color
+        cell_v_color = cell_color
+
+      pygame.draw.rect(screen, cell_color, rect, width=2, border_radius=10)
+      draw_text(screen, f"{cell_index + 1}", font_small, cell_index_color, x_shift + left_boost + 15, y_shift + 20)
+      draw_text(screen, f"{cell_voltage:.2f}", font_small, cell_v_color, x_shift + left_boost + 90, y_shift + 20)
+
+    y_shift += 43
   
   data['unit_diff'] = good_cell_max - bad_cell_min
   data['bad_cell_min'] = bad_cell_min
