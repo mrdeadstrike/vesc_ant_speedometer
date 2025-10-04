@@ -45,7 +45,16 @@ PREV_VALS = {
   'balance_temp_get_last_time': time.time(),
   'external_temp_0_get_last_time': time.time(),
   'external_temp_1_get_last_time': time.time(),
+  'external_temp_2_get_last_time': time.time(),
+  'external_temp_3_get_last_time': time.time(),
 }
+
+EXTERNAL_TEMP_KEYS = [
+  'external_temp_0',
+  'external_temp_1',
+  'external_temp_2',
+  'external_temp_3',
+]
 
 import platform
 import os
@@ -212,8 +221,10 @@ def handle_command(command):
     add_speak_message("Температура БМС")
     add_speak_message(f"Мосфеты {data['bms_temp']['mosfet_temp']} градусов")
     add_speak_message(f"Балансиры {data['bms_temp']['balance_temp']} градусов")
-    add_speak_message(f"Батарея датчик 1... {data['bms_temp']['external_temp_1']} градусов")
-    add_speak_message(f"Батарея датчик 2... {data['bms_temp']['external_temp_2']} градусов")
+    for sensor_index, key in enumerate(EXTERNAL_TEMP_KEYS, start=1):
+      add_speak_message(
+        f"Батарея датчик {sensor_index}... {data['bms_temp'][key]} градусов"
+      )
   elif command == "напряжени":
     add_speak_message(f"Напряжение " + f"{data['bms_voltage']:.1f}".replace(".", " и ") + " вольт")
     add_speak_message(f"Просадка " + f"{data['voltage_down']:.1f}".replace(".", " и ") + " вольт")
@@ -1044,10 +1055,12 @@ while running:
     temp_y += 50
     pygame.draw.rect(screen, (200, 200, 200), (WIDTH * 0.5 + 10, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
     draw_text(screen, f"Б", font_small, (200, 200, 200), WIDTH * 0.6, temp_y)
-    bat_temp_1 = get_battery_temp_color(int(data['bms_temp']['external_temp_0']))
-    draw_text(screen, f"{int(data['bms_temp']['external_temp_0'])}°", font_small, bat_temp_1, WIDTH * 0.75, temp_y)
-    bat_temp_2 = get_battery_temp_color(int(data['bms_temp']['external_temp_1']))
-    draw_text(screen, f"{int(data['bms_temp']['external_temp_1'])}°", font_small, bat_temp_2, WIDTH * 0.9, temp_y)
+    base_x = WIDTH * 0.68
+    step_x = WIDTH * 0.075
+    for idx, key in enumerate(EXTERNAL_TEMP_KEYS):
+      sensor_temp = int(data['bms_temp'][key])
+      sensor_color = get_battery_temp_color(sensor_temp)
+      draw_text(screen, f"{sensor_temp}°", font_small, sensor_color, base_x + step_x * idx, temp_y)
 
     # temp alarm
     # bms
@@ -1068,21 +1081,21 @@ while running:
         add_speak_message(f"Внимание... Температура балансиров БМС достигла... {data['bms_temp']['balance_temp']} градусов")
         PREV_VALS['balance_temp_get_last_time'] = cur_t
 
-    if cur_t - PREV_VALS['external_temp_0_get_last_time'] > 30:
-      if data['bms_temp']['external_temp_0'] >= 40 and PREV_VALS['bms_temp']['external_temp_0'] < 40:
-        add_speak_message(f"Температура батареи датчик 1... достигла... {data['bms_temp']['external_temp_0']} градусов")
-        PREV_VALS['external_temp_0_get_last_time'] = cur_t
-      if data['bms_temp']['external_temp_0'] >= 55 and PREV_VALS['bms_temp']['external_temp_0'] < 55:
-        add_speak_message(f"Внимание... Температура батареи датчик 1... достигла... {data['bms_temp']['external_temp_0']} градусов")
-        PREV_VALS['external_temp_0_get_last_time'] = cur_t
-
-    if cur_t - PREV_VALS['external_temp_1_get_last_time'] > 30:
-      if data['bms_temp']['external_temp_1'] >= 40 and PREV_VALS['bms_temp']['external_temp_1'] < 40:
-        add_speak_message(f"Температура батареи датчик 2... достигла... {data['bms_temp']['external_temp_1']} градусов")
-        PREV_VALS['external_temp_1_get_last_time'] = cur_t
-      if data['bms_temp']['external_temp_1'] >= 55 and PREV_VALS['bms_temp']['external_temp_1'] < 55:
-        add_speak_message(f"Внимание... Температура батареи датчик 2... достигла... {data['bms_temp']['external_temp_1']} градусов")
-        PREV_VALS['external_temp_1_get_last_time'] = cur_t
+    for sensor_index, key in enumerate(EXTERNAL_TEMP_KEYS, start=1):
+      timer_key = f"{key}_get_last_time"
+      if cur_t - PREV_VALS[timer_key] > 30:
+        current_val = data['bms_temp'][key]
+        prev_val = PREV_VALS['bms_temp'][key]
+        if current_val >= 40 and prev_val < 40:
+          add_speak_message(
+            f"Температура батареи датчик {sensor_index}... достигла... {current_val} градусов"
+          )
+          PREV_VALS[timer_key] = cur_t
+        if current_val >= 55 and prev_val < 55:
+          add_speak_message(
+            f"Внимание... Температура батареи датчик {sensor_index}... достигла... {current_val} градусов"
+          )
+          PREV_VALS[timer_key] = cur_t
 
     # температура колес дергается поэтому после смены ждем время до следующего уведомления
     if cur_t - PREV_VALS['motor1_temp_get_last_time'] > 30:
