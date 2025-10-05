@@ -924,12 +924,18 @@ def SetDebugValues():
   changeV = time.time() % 5 / 5
 
   data['master']['motor_current'] = 200 * changeV
+  data['slave']['motor_current'] = 180 * (1 - changeV)
   data['bms_current'] = 50 * changeV
   data['speed'] = 70 * changeV
   data['master']['duty'] = 300 * changeV
+  data['slave']['duty'] = 280 * (1 - changeV)
+  data['master']['battery_current'] = 60 * changeV
+  data['slave']['battery_current'] = 40 * (1 - changeV)
   data['bms_voltage'] = 60 - 10 * changeV
   if data['master']['duty'] > 200:
     data['master']['duty'] = 200
+  if data['slave']['duty'] > 200:
+    data['slave']['duty'] = 200
 
 # Переменные для замера разгона 0-60 км/ч
 start_time = None
@@ -1027,28 +1033,30 @@ while running:
     
     up_gap += 20
 
-    if average_duty >= 80:
-      draw_progress_bar(screen, 15, 40 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (255, 0, 0))
-    else:
-      draw_progress_bar(screen, 15, 40 + up_gap, 110, 15, 100 if miganie else 0, 100, "FW", (240, 240, 240), False)
+    stats_bar_start = 40 + up_gap
+    stats_bar_step = 60
+    stats_bar_width = 110
+    stats_bar_height = 15
+    left_bar_x = 25
+    right_bar_x = WIDTH - stats_bar_width - 25
 
-    #draw_arc(f"{int(summ_current)}A", screen, (WIDTH * 0.9, 100 + up_gap), 80, summ_current, 200, (255, 0, 0))
-    draw_progress_bar(screen, WIDTH * 0.8, 40 + up_gap, 110, 15, int(summ_current), 200, str(int(summ_current)) + "A", (255, 0, 0))
-    summ_battery = int(((data['slave']['battery_current'] + data['master']['battery_current']) / 2))
-    if summ_battery > 50:
-      summ_battery = 50
+    slave_motor_current = int(abs(data['slave']['motor_current']))
+    slave_battery_current = int(abs(data['slave']['battery_current']))
+    slave_duty = int(abs(data['slave']['duty']))
 
-    bms_current = data['bms_current']
+    master_motor_current = int(abs(data['master']['motor_current']))
+    master_battery_current = int(abs(data['master']['battery_current']))
+    master_duty = int(abs(data['master']['duty']))
 
-    #draw_progress_bar(screen, WIDTH * 0.8, 60 + up_gap, 110, 15, int(summ_battery), 50, f"{int(summ_battery)}A", (0, 0, 255))
-    draw_progress_bar(screen, WIDTH * 0.8, 130 + up_gap, 110, 15, int(bms_current), 50, f"{int(bms_current)}A", (0, 0, 255))
+    draw_progress_bar(screen, left_bar_x, stats_bar_start, stats_bar_width, stats_bar_height, slave_motor_current, 200, f"{slave_motor_current}A", (255, 0, 0))
+    draw_progress_bar(screen, left_bar_x, stats_bar_start + stats_bar_step, stats_bar_width, stats_bar_height, slave_battery_current, 80, f"{slave_battery_current}A", (0, 0, 255))
+    draw_progress_bar(screen, left_bar_x, stats_bar_start + stats_bar_step * 2, stats_bar_width, stats_bar_height, slave_duty, 100, f"{slave_duty}%", (0, 0, 0))
 
-    draw_progress_bar(screen, 15, 130 + up_gap, 110, 15, int(average_duty), 100, f"{int(average_duty)}%", (0, 0, 0))
+    draw_progress_bar(screen, right_bar_x, stats_bar_start, stats_bar_width, stats_bar_height, master_motor_current, 200, f"{master_motor_current}A", (255, 0, 0))
+    draw_progress_bar(screen, right_bar_x, stats_bar_start + stats_bar_step, stats_bar_width, stats_bar_height, master_battery_current, 80, f"{master_battery_current}A", (0, 0, 255))
+    draw_progress_bar(screen, right_bar_x, stats_bar_start + stats_bar_step * 2, stats_bar_width, stats_bar_height, master_duty, 100, f"{master_duty}%", (0, 0, 0))
 
     draw_text_center(screen, str(data['power']) + " Вт", font_small, (0, 0, 0), 295)
-
-    #draw_arc(f"{int(summ_battery)}A", screen, (WIDTH * 0.9, 220 + up_gap), 80, summ_battery, 50, (0, 0, 255))
-    #draw_arc(f"{int(average_duty)}%", screen, (WIDTH * 0.1, 220 + up_gap), 80, average_duty, 100, (0, 0, 0))
 
     # Когда ослабление магнитного поля активно рисуем рамку
     #if average_duty >= 85:
