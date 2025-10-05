@@ -1033,12 +1033,12 @@ while running:
     
     up_gap += 20
 
-    stats_bar_start = 40 + up_gap
-    stats_bar_step = 60
-    stats_bar_width = 110
+    stats_bar_start = 30 + up_gap
+    stats_bar_step = 85
+    stats_bar_width = 100
     stats_bar_height = 15
-    left_bar_x = 25
-    right_bar_x = WIDTH - stats_bar_width - 25
+    left_bar_x = 10
+    right_bar_x = WIDTH - stats_bar_width - 10
 
     slave_motor_current = int(abs(data['slave']['motor_current']))
     slave_battery_current = int(abs(data['slave']['battery_current']))
@@ -1050,11 +1050,11 @@ while running:
 
     draw_progress_bar(screen, left_bar_x, stats_bar_start, stats_bar_width, stats_bar_height, slave_motor_current, 200, f"{slave_motor_current}A", (255, 0, 0))
     draw_progress_bar(screen, left_bar_x, stats_bar_start + stats_bar_step, stats_bar_width, stats_bar_height, slave_battery_current, 80, f"{slave_battery_current}A", (0, 0, 255))
-    draw_progress_bar(screen, left_bar_x, stats_bar_start + stats_bar_step * 2, stats_bar_width, stats_bar_height, slave_duty, 100, f"{slave_duty}%", (0, 0, 0))
+    draw_progress_bar(screen, left_bar_x, stats_bar_start + stats_bar_step * 2, stats_bar_width, stats_bar_height, slave_duty, 100, f"{slave_duty}", (0, 0, 0))
 
     draw_progress_bar(screen, right_bar_x, stats_bar_start, stats_bar_width, stats_bar_height, master_motor_current, 200, f"{master_motor_current}A", (255, 0, 0))
     draw_progress_bar(screen, right_bar_x, stats_bar_start + stats_bar_step, stats_bar_width, stats_bar_height, master_battery_current, 80, f"{master_battery_current}A", (0, 0, 255))
-    draw_progress_bar(screen, right_bar_x, stats_bar_start + stats_bar_step * 2, stats_bar_width, stats_bar_height, master_duty, 100, f"{master_duty}%", (0, 0, 0))
+    draw_progress_bar(screen, right_bar_x, stats_bar_start + stats_bar_step * 2, stats_bar_width, stats_bar_height, master_duty, 100, f"{master_duty}", (0, 0, 0))
 
     draw_text_center(screen, str(data['power']) + " Вт", font_small, (0, 0, 0), 295)
 
