@@ -19,6 +19,7 @@ COMM_SET_MCCONF_TEMP = 48
 COMM_SET_MCCONF_TEMP_SETUP = 49
 
 ECO_SPEED_LIMIT_KMH = 20.0
+DEFAULT_NORMAL_ERPM = 100000.0
 
 SLAVE_CAN_ID = 15
 
@@ -193,6 +194,7 @@ vesc_command_queue = queue.Queue()
 eco_mode = False
 current_speed_limit_kmh = None
 eco_toggle_was_pressed = False
+NORMAL_SPEED_LIMIT_KMH = None
 
 # === НАСТРОЙКИ ===
 MODEL_PATH = "vosk-model-ru"  # путь к модели
@@ -365,7 +367,7 @@ def enqueue_vesc_command(payload, can_id=None):
 
 def build_mcconf_temp_payload(max_speed_mps, min_speed_mps=None,
                               is_setup=True, store=False,
-                              forward_can=True, divide_by_controllers=False,
+                              forward_can=False, divide_by_controllers=False,
                               ack=False):
   if min_speed_mps is None:
     min_speed_mps = -max_speed_mps if max_speed_mps != 0 else 0.0
@@ -393,14 +395,27 @@ def build_mcconf_temp_payload(max_speed_mps, min_speed_mps=None,
 
   return bytes(payload)
 
+def get_normal_speed_limit_kmh():
+  global NORMAL_SPEED_LIMIT_KMH
+  if NORMAL_SPEED_LIMIT_KMH is None:
+    wheel_rpm_per_erpm = 1.0 / pole_pairs
+    wheel_speed_per_rpm = wheel_circumference_m / 60.0
+    base_speed_mps = DEFAULT_NORMAL_ERPM * wheel_rpm_per_erpm * wheel_speed_per_rpm
+    NORMAL_SPEED_LIMIT_KMH = base_speed_mps * 3.6
+  return NORMAL_SPEED_LIMIT_KMH
+
 def queue_speed_limit_command(max_speed_kmh, force=False):
   global current_speed_limit_kmh
   if not force and max_speed_kmh == current_speed_limit_kmh:
     return
 
-  max_speed_mps = 0.0 if max_speed_kmh is None else max_speed_kmh / 3.6
+  if max_speed_kmh is None:
+    max_speed_kmh = get_normal_speed_limit_kmh()
+
+  max_speed_mps = max_speed_kmh / 3.6
   payload = build_mcconf_temp_payload(max_speed_mps)
   enqueue_vesc_command(payload)
+  enqueue_vesc_command(payload, SLAVE_CAN_ID)
   current_speed_limit_kmh = max_speed_kmh
 
 def process_pending_vesc_commands(ser):
