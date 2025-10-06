@@ -14,6 +14,13 @@ import urllib
 
 
 PACKET_INDEX_FOR_VESC = 47#4
+COMM_FORWARD_CAN = 34
+COMM_SET_MCCONF_TEMP = 48
+COMM_SET_MCCONF_TEMP_SETUP = 49
+
+ECO_SPEED_LIMIT_KMH = 50.0
+
+SLAVE_CAN_ID = 15
 
 CELL_COUNT = 20
 
@@ -182,6 +189,11 @@ import threading
 import json
 from vosk import Model, KaldiRecognizer
 
+vesc_command_queue = queue.Queue()
+eco_mode = False
+current_speed_limit_kmh = None
+eco_toggle_was_pressed = False
+
 # === НАСТРОЙКИ ===
 MODEL_PATH = "vosk-model-ru"  # путь к модели
 if IS_RASPBERY:
@@ -335,6 +347,92 @@ def pack_comm_get_values(can_id=None):
   packet += bytes([3])
   return packet
 
+def build_vesc_packet(payload):
+  length = len(payload)
+  if length > 255:
+    raise ValueError("Payload too large for short VESC frame")
+  packet = bytearray([2, length])
+  packet.extend(payload)
+  crc = crc16(payload)
+  packet.extend([(crc >> 8) & 0xFF, crc & 0xFF, 3])
+  return bytes(packet)
+
+def enqueue_vesc_command(payload, can_id=None):
+  if can_id is not None:
+    payload = bytes([COMM_FORWARD_CAN, can_id]) + payload
+  packet = build_vesc_packet(payload)
+  vesc_command_queue.put(packet)
+
+def build_mcconf_temp_payload(max_speed_mps, min_speed_mps=None,
+                              is_setup=True, store=False,
+                              forward_can=True, divide_by_controllers=False,
+                              ack=False):
+  if min_speed_mps is None:
+    min_speed_mps = -max_speed_mps if max_speed_mps != 0 else 0.0
+
+  payload = bytearray()
+  payload.append(COMM_SET_MCCONF_TEMP_SETUP if is_setup else COMM_SET_MCCONF_TEMP)
+  payload.append(1 if store else 0)
+  payload.append(1 if forward_can else 0)
+  payload.append(1 if ack else 0)
+  payload.append(1 if divide_by_controllers else 0)
+
+  values = (
+    1.0,           # current_min_scale
+    1.0,           # current_max_scale
+    float(min_speed_mps),
+    float(max_speed_mps),
+    0.05,          # duty_min (default value)
+    0.95,          # duty_max (default value)
+    -200000.0,     # watt_min
+    200000.0       # watt_max
+  )
+
+  for val in values:
+    payload.extend(struct.pack('>f', float(val)))
+
+  return bytes(payload)
+
+def queue_speed_limit_command(max_speed_kmh, force=False):
+  global current_speed_limit_kmh
+  if not force and max_speed_kmh == current_speed_limit_kmh:
+    return
+
+  max_speed_mps = 0.0 if max_speed_kmh is None else max_speed_kmh / 3.6
+  payload = build_mcconf_temp_payload(max_speed_mps)
+  enqueue_vesc_command(payload)
+  current_speed_limit_kmh = max_speed_kmh
+
+def process_pending_vesc_commands(ser):
+  try:
+    while True:
+      packet = vesc_command_queue.get_nowait()
+      ser.write(packet)
+  except queue.Empty:
+    pass
+
+def set_eco_mode(enabled):
+  global eco_mode
+  global block_touch
+  if block_touch:
+    return
+  if enabled == eco_mode:
+    return
+
+  if enabled:
+    queue_speed_limit_command(ECO_SPEED_LIMIT_KMH)
+    add_speak_message("Эко режим активирован")
+  else:
+    queue_speed_limit_command(None)
+    add_speak_message("Нормальный режим")
+
+  eco_mode = enabled
+
+def requeue_current_speed_limit():
+  if current_speed_limit_kmh is None:
+    return
+  queue_speed_limit_command(current_speed_limit_kmh, force=True)
+
 def parse_vesc_payload(payload, forwarded=False):
   try:
     if forwarded:
@@ -430,6 +528,8 @@ def read_serial(ser):
   packet_master = pack_comm_get_values()
   packet_slave = pack_comm_get_values(can_id=15)
 
+  requeue_current_speed_limit()
+
   while True:
     #GET_INFO
     ser.write(packet_master)
@@ -465,6 +565,7 @@ def read_serial(ser):
       raise SerialGetError("Error")
       
 
+    process_pending_vesc_commands(ser)
     time.sleep(0.1)#0.05
 
     slave_id = 15
@@ -502,6 +603,7 @@ def read_serial(ser):
       #add_speak_message("Ошибка данных контроллера слейв")
       raise SerialGetError("Error")
 
+    process_pending_vesc_commands(ser)
     time.sleep(0.1)#0.05
 
 
@@ -666,6 +768,7 @@ pygame.display.set_caption('VESC ANT Speedometer')
 font_large = pygame.font.SysFont('Arial', 150)
 font_medium = pygame.font.SysFont('Arial', 50, True)
 font_small = pygame.font.SysFont('Arial', 40, True)
+font_tick = pygame.font.SysFont('Arial', 30, True)
 clock = pygame.time.Clock()
 
 setDebugValues = False
@@ -726,7 +829,7 @@ def draw_speed_arc(surface, center, radius, speed, max_speed, up_gap):
     pygame.draw.line(surface, speedColor, (marker_inner_x, marker_inner_y), (marker_outer_x, marker_outer_y), 10)
 
   # Отметки скорости
-  for mark in [0, 20, 40, 60, 80]:
+  for mark in range(0, int(max_speed) + 1, 20):
     angle = math.pi * 0.85 + (mark / max_speed) * math.pi * 1.3
     x_outer = center[0] + (radius + 5) * math.cos(angle)
     y_outer = center[1] + (radius + 5) * math.sin(angle)
@@ -734,9 +837,9 @@ def draw_speed_arc(surface, center, radius, speed, max_speed, up_gap):
     y_inner = center[1] + (radius - 25) * math.sin(angle)
     pygame.draw.line(surface, (60, 60, 60), (x_inner, y_inner), (x_outer, y_outer), 3)
 
-    x = center[0] + radius * 1.22 * math.cos(angle)
-    y = center[1] + radius * 1.22 * math.sin(angle)
-    label = font_small.render(str(mark), True, (0, 0, 0))
+    x = center[0] + radius * 1.17 * math.cos(angle)
+    y = center[1] + radius * 1.17 * math.sin(angle)
+    label = font_tick.render(str(mark), True, (0, 0, 0))
     label_rect = label.get_rect(center=(x, y))
     surface.blit(label, label_rect)
 
@@ -1021,7 +1124,7 @@ while running:
     #if average_duty >= 85:
     #  speed_color = (255, 0, 0)
 
-    draw_speed_arc(screen, (WIDTH//2, 180 + up_gap), 150, int(data['speed']), 80, up_gap)
+    draw_speed_arc(screen, (WIDTH//2, 180 + up_gap), 150, int(data['speed']), 100, up_gap)
 
     # 2. Показатели контроллеров мастер и слейв
     y_offset = 360
@@ -1527,6 +1630,21 @@ while running:
         can_start_record = False
         recorder_proc = subprocess.Popen(["wf-recorder", "-f", filename])
         print(">>> Запись началась")
+
+    # Переключатель ЭКО / НОРМА
+    status_rect = pygame.Rect(WIDTH - 170, 12, 160, 40)
+    status_text = "Э" if eco_mode else "Н"
+    status_color = (40, 200, 64) if eco_mode else (200, 200, 200)
+    pygame.draw.rect(screen, status_color, status_rect, border_radius=25)
+    status_label = font_small.render(status_text, True, (0, 0, 0))
+    screen.blit(status_label, status_label.get_rect(center=status_rect.center))
+
+    mouse = pygame.mouse.get_pos()
+    click = pygame.mouse.get_pressed()
+    status_pressed = status_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY)
+    if status_pressed and not eco_toggle_was_pressed:
+      set_eco_mode(not eco_mode)
+    eco_toggle_was_pressed = status_pressed
 
   #################### PAGE TRIP_STAT ###########################
   # добавить температуру моторов
