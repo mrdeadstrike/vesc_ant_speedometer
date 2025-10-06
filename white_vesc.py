@@ -20,6 +20,7 @@ COMM_SET_MCCONF_TEMP_SETUP = 49
 
 ECO_SPEED_LIMIT_KMH = 20.0
 DEFAULT_NORMAL_ERPM = 100000.0
+ECO_POWER_DISPLAY_LIMIT = 2400
 
 SLAVE_CAN_ID = 15
 
@@ -417,6 +418,12 @@ def queue_speed_limit_command(max_speed_kmh, force=False):
   enqueue_vesc_command(payload)
   enqueue_vesc_command(payload, SLAVE_CAN_ID)
   current_speed_limit_kmh = max_speed_kmh
+
+def get_display_power():
+  power = data.get('power', 0)
+  if eco_mode and power > ECO_POWER_DISPLAY_LIMIT:
+    return ECO_POWER_DISPLAY_LIMIT
+  return power
 
 def process_pending_vesc_commands(ser):
   try:
@@ -1174,7 +1181,7 @@ while running:
     draw_progress_bar(screen, right_bar_x, stats_bar_start + stats_bar_step, stats_bar_width, stats_bar_height, master_battery_current, 80, f"{master_battery_current}A", (0, 0, 255))
     draw_progress_bar(screen, right_bar_x, stats_bar_start + stats_bar_step * 2, stats_bar_width, stats_bar_height, master_duty, 100, f"{master_duty}", (0, 0, 0))
 
-    draw_text_center(screen, str(data['power']) + " Вт", font_small, (0, 0, 0), 295)
+    draw_text_center(screen, str(get_display_power()) + " Вт", font_small, (0, 0, 0), 295)
 
     # Когда ослабление магнитного поля активно рисуем рамку
     #if average_duty >= 85:
@@ -1649,7 +1656,7 @@ while running:
     # Переключатель ЭКО / НОРМА
     status_rect = pygame.Rect(WIDTH - 170, 12, 160, 40)
     status_text = "Э" if eco_mode else "Н"
-    status_color = (40, 200, 64) if eco_mode else (200, 200, 200)
+    status_color = (200, 200, 200)
     pygame.draw.rect(screen, status_color, status_rect, border_radius=25)
     status_label = font_small.render(status_text, True, (0, 0, 0))
     screen.blit(status_label, status_label.get_rect(center=status_rect.center))
