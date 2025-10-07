@@ -457,8 +457,9 @@ def requeue_current_speed_limit():
 def parse_vesc_payload(payload, forwarded=False):
   try:
     if forwarded:
-      pass
-      #payload = payload[2:]
+      if len(payload) < 4:
+        return None
+      payload = payload[2:]
     if len(payload) < 24:
       return None
 
