@@ -18,7 +18,7 @@ COMM_FORWARD_CAN = 34
 COMM_SET_MCCONF_TEMP = 48
 COMM_SET_MCCONF_TEMP_SETUP = 49
 
-ECO_SPEED_LIMIT_KMH = 20.0
+ECO_SPEED_LIMIT_KMH = 49.0
 DEFAULT_NORMAL_ERPM = 100000.0
 ECO_POWER_DISPLAY_LIMIT = 2400
 
@@ -368,7 +368,7 @@ def enqueue_vesc_command(payload, can_id=None):
 
 def build_mcconf_temp_payload(max_speed_mps, min_speed_mps=None,
                               is_setup=True, store=False,
-                              forward_can=False, divide_by_controllers=False,
+                              forward_can=True, divide_by_controllers=False,
                               ack=False):
   if min_speed_mps is None:
     min_speed_mps = -max_speed_mps if max_speed_mps != 0 else 0.0
@@ -416,7 +416,6 @@ def queue_speed_limit_command(max_speed_kmh, force=False):
   max_speed_mps = max_speed_kmh / 3.6
   payload = build_mcconf_temp_payload(max_speed_mps)
   enqueue_vesc_command(payload)
-  enqueue_vesc_command(payload, SLAVE_CAN_ID)
   current_speed_limit_kmh = max_speed_kmh
 
 def get_display_power():
