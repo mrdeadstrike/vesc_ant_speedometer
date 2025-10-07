@@ -487,7 +487,7 @@ def draw_lock_page():
   draw_text_center(screen, "Самокат заблокирован", font_medium, (30, 30, 30), prompt_y)
   draw_text_center(screen, "Введите пароль", font_small, (80, 80, 80), prompt_y + 70)
 
-  dots = "●" * len(lock_input) if lock_input else "—"
+  dots = "*" * len(lock_input) if lock_input else "—"
   draw_text_center(screen, dots, font_medium, (10, 10, 10), prompt_y + 130)
   if lock_message:
     draw_text_center(screen, lock_message, font_small, (200, 50, 50), prompt_y + 180)
