@@ -21,6 +21,13 @@ COMM_SET_MCCONF_TEMP_SETUP = 49
 ECO_SPEED_LIMIT_KMH = 49.0
 DEFAULT_NORMAL_ERPM = 100000.0
 ECO_POWER_DISPLAY_LIMIT = 2400
+LOCK_PASSWORD = "1024"
+LOCK_KEYPAD_LAYOUT = [
+  ["1", "2", "3"],
+  ["4", "5", "6"],
+  ["7", "8", "9"],
+  ["", "0", "←"]
+]
 
 SLAVE_CAN_ID = 15
 
@@ -196,6 +203,13 @@ eco_mode = False
 current_speed_limit_kmh = None
 eco_toggle_was_pressed = False
 NORMAL_SPEED_LIMIT_KMH = None
+lock_active = False
+lock_input = ""
+lock_message = ""
+lock_restore_speed_kmh = None
+lock_keypad_pressed = False
+lock_prev_page = "SPEEDOMETER"
+PAGE_LOCK = "LOCK"
 
 # === НАСТРОЙКИ ===
 MODEL_PATH = "vosk-model-ru"  # путь к модели
@@ -424,6 +438,98 @@ def get_display_power():
     return ECO_POWER_DISPLAY_LIMIT
   return power
 
+def activate_lock():
+  global lock_active, lock_input, lock_message, lock_restore_speed_kmh, lock_prev_page, PAGE_NAME
+  if lock_active:
+    return
+  lock_active = True
+  lock_input = ""
+  lock_message = ""
+  lock_restore_speed_kmh = current_speed_limit_kmh
+  queue_speed_limit_command(0, force=True)
+  add_speak_message("Самокат заблокирован")
+  lock_prev_page = PAGE_NAME
+  PAGE_NAME = PAGE_LOCK
+
+def deactivate_lock(unlocked):
+  global lock_active, lock_input, lock_message, lock_restore_speed_kmh, lock_keypad_pressed, lock_prev_page, PAGE_NAME
+  if not lock_active:
+    return
+  lock_active = False
+  lock_input = ""
+  lock_message = ""
+  restore_speed = lock_restore_speed_kmh
+  lock_restore_speed_kmh = None
+  lock_keypad_pressed = False
+  queue_speed_limit_command(restore_speed, force=True)
+  if unlocked:
+    add_speak_message("Самокат разблокирован")
+  PAGE_NAME = lock_prev_page if lock_prev_page else "SPEEDOMETER"
+
+def handle_lock_digit(digit):
+  global lock_input, lock_message
+  if len(lock_input) >= 4:
+    return
+  lock_input += digit
+  if len(lock_input) == 4:
+    if lock_input == LOCK_PASSWORD:
+      deactivate_lock(True)
+    else:
+      lock_message = "Пароль неверный"
+      lock_input = ""
+  else:
+    lock_message = ""
+
+def draw_lock_page():
+  global lock_keypad_pressed
+  screen.fill((250, 250, 250))
+  prompt_y = HEIGHT * 0.2
+  draw_text_center(screen, "Самокат заблокирован", font_medium, (30, 30, 30), prompt_y)
+  draw_text_center(screen, "Введите пароль", font_small, (80, 80, 80), prompt_y + 70)
+
+  dots = "●" * len(lock_input) if lock_input else "—"
+  draw_text_center(screen, dots, font_medium, (10, 10, 10), prompt_y + 130)
+  if lock_message:
+    draw_text_center(screen, lock_message, font_small, (200, 50, 50), prompt_y + 180)
+
+  keypad_top = prompt_y + 240
+  keypad_left = WIDTH * 0.5 - 120
+  key_w = 80
+  key_h = 80
+  key_gap = 15
+
+  mouse = pygame.mouse.get_pos()
+  click = pygame.mouse.get_pressed()
+  if not click[0]:
+    lock_keypad_pressed = False
+
+  for row_idx, row in enumerate(LOCK_KEYPAD_LAYOUT):
+    for col_idx, key in enumerate(row):
+      if key == "":
+        continue
+      key_x = keypad_left + col_idx * (key_w + key_gap)
+      key_y = keypad_top + row_idx * (key_h + key_gap)
+      key_rect = pygame.Rect(key_x, key_y, key_w, key_h)
+      is_backspace = key == "←"
+      key_color = (200, 200, 200) if not is_backspace else (255, 180, 180)
+      pygame.draw.rect(screen, key_color, key_rect, border_radius=18)
+      label = font_medium.render(key if not is_backspace else "-", True, (20, 20, 20))
+      screen.blit(label, label.get_rect(center=key_rect.center))
+
+      if key_rect.collidepoint(mouse) and click[0] and not lock_keypad_pressed:
+        if is_backspace:
+          if lock_input:
+            handle_backspace_lock()
+        else:
+          handle_lock_digit(key)
+        lock_keypad_pressed = True
+
+def handle_backspace_lock():
+  global lock_input, lock_message
+  if lock_input:
+    lock_input = lock_input[:-1]
+    lock_message = ""
+
 def process_pending_vesc_commands(ser):
   try:
     while True:
@@ -435,6 +541,8 @@ def process_pending_vesc_commands(ser):
 def set_eco_mode(enabled):
   global eco_mode
   global block_touch
+  if lock_active:
+    return
   if block_touch:
     return
   if enabled == eco_mode:
@@ -1102,6 +1210,24 @@ while running:
   for event in pygame.event.get():
     if event.type == pygame.QUIT:
       running = False
+    elif PAGE_NAME == PAGE_LOCK and event.type == pygame.KEYDOWN:
+      if event.key == pygame.K_RETURN:
+        if len(lock_input) == 4 and lock_input == LOCK_PASSWORD:
+          deactivate_lock(True)
+        else:
+          lock_message = "Пароль неверный"
+          lock_input = ""
+      elif event.key == pygame.K_BACKSPACE:
+        handle_backspace_lock()
+      else:
+        ch = event.unicode
+        if ch.isdigit():
+          handle_lock_digit(ch)
+  if PAGE_NAME == PAGE_LOCK:
+    draw_lock_page()
+    pygame.display.flip()
+    clock.tick(30)
+    continue
 
   screen.fill((254, 254, 254))
 
@@ -1568,9 +1694,14 @@ while running:
     trip_end_datetime_str_full = f"{now.hour:02d} часов {now.minute:02d} минут"
   
 
+    button_size = 37
+    button_spacing = 15
+    btn_x = 12
+    btn_y = 12
+
     # Кнопка выключения системы
-    button_rect = pygame.Rect(12, 12, 40, 40)
-    pygame.draw.rect(screen, (255, 95, 87), button_rect, border_radius=25)
+    button_rect = pygame.Rect(btn_x, btn_y, button_size, button_size)
+    pygame.draw.rect(screen, (255, 95, 87), button_rect, border_radius=20)
     button_text = font_small.render("", True, (0, 0, 0))
     screen.blit(button_text, button_text.get_rect(center=button_rect.center))
 
@@ -1615,8 +1746,9 @@ while running:
       data_trip['motor2_max_temp'] = data['master']['temp_motor']
 
     # Кнопка выключения программы
-    button_rect = pygame.Rect(72, 12, 40, 40)
-    pygame.draw.rect(screen, (255, 188, 46), button_rect, border_radius=25)
+    btn_x += button_size + button_spacing
+    button_rect = pygame.Rect(btn_x, btn_y, button_size, button_size)
+    pygame.draw.rect(screen, (255, 188, 46), button_rect, border_radius=20)
     button_text = font_small.render("", True, (0, 0, 0))
     screen.blit(button_text, button_text.get_rect(center=button_rect.center))
 
@@ -1636,15 +1768,17 @@ while running:
       SaveData()
 
     # Кнопка начала записи
+    # Кнопка начала записи
+    btn_x += button_size + button_spacing
+    record_rect = pygame.Rect(btn_x, btn_y, button_size, button_size)
     if can_start_record:
-      button_rect = pygame.Rect(132, 12, 40, 40)
-      pygame.draw.rect(screen, (40, 200, 64), button_rect, border_radius=25)
+      pygame.draw.rect(screen, (40, 200, 64), record_rect, border_radius=20)
       button_text = font_small.render("", True, (0, 0, 0))
-      screen.blit(button_text, button_text.get_rect(center=button_rect.center))
+      screen.blit(button_text, button_text.get_rect(center=record_rect.center))
 
       mouse = pygame.mouse.get_pos()
       click = pygame.mouse.get_pressed()
-      if button_rect.collidepoint(mouse) and click[0] and IS_RASPBERY:
+      if record_rect.collidepoint(mouse) and click[0] and IS_RASPBERY:
         # Старт записи
         filename = "trip.mp4"
         if os.path.exists(filename):
@@ -1652,6 +1786,17 @@ while running:
         can_start_record = False
         recorder_proc = subprocess.Popen(["wf-recorder", "-f", filename])
         print(">>> Запись началась")
+
+    # Кнопка блокировки
+    btn_x += button_size + button_spacing
+    lock_rect = pygame.Rect(btn_x, btn_y, button_size, button_size)
+    lock_color = (60, 140, 230) if lock_active else (90, 170, 255)
+    pygame.draw.rect(screen, lock_color, lock_rect, border_radius=20)
+
+    mouse = pygame.mouse.get_pos()
+    click = pygame.mouse.get_pressed()
+    if (not lock_active) and lock_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
+      activate_lock()
 
     # Переключатель ЭКО / НОРМА
     status_rect = pygame.Rect(WIDTH - 170, 12, 160, 40)
