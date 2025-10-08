@@ -380,12 +380,12 @@ def enqueue_vesc_command(payload, can_id=None):
   packet = build_vesc_packet(payload)
   vesc_command_queue.put(packet)
 
-def build_mcconf_temp_payload(max_speed_mps, min_speed_mps=None,
+def build_mcconf_temp_payload_erpm(max_erpm, min_erpm=None,
                               is_setup=True, store=False,
                               forward_can=True, divide_by_controllers=False,
                               ack=False):
-  if min_speed_mps is None:
-    min_speed_mps = -max_speed_mps if max_speed_mps != 0 else 0.0
+  if min_erpm is None:
+    min_erpm = -max_erpm if max_erpm != 0 else 0.0
 
   payload = bytearray()
   payload.append(COMM_SET_MCCONF_TEMP_SETUP if is_setup else COMM_SET_MCCONF_TEMP)
@@ -395,14 +395,14 @@ def build_mcconf_temp_payload(max_speed_mps, min_speed_mps=None,
   payload.append(1 if divide_by_controllers else 0)
 
   values = (
-    1.0,           # current_min_scale
-    1.0,           # current_max_scale
-    float(min_speed_mps),
-    float(max_speed_mps),
-    0.05,          # duty_min (default value)
-    0.95,          # duty_max (default value)
-    -200000.0,     # watt_min
-    200000.0       # watt_max
+    1.0,             # current_min_scale
+    1.0,             # current_max_scale
+    float(min_erpm),
+    float(max_erpm),
+    0.05,            # duty_min (default value)
+    0.95,            # duty_max (default value)
+    -200000.0,       # watt_min
+    200000.0         # watt_max
   )
 
   for val in values:
@@ -419,18 +419,29 @@ def get_normal_speed_limit_kmh():
     NORMAL_SPEED_LIMIT_KMH = base_speed_mps * 3.6
   return NORMAL_SPEED_LIMIT_KMH
 
+def speed_kmh_to_erpm(speed_kmh):
+  if speed_kmh is None:
+    return DEFAULT_NORMAL_ERPM
+  speed_mps = speed_kmh / 3.6
+  wheel_speed_per_rpm = wheel_circumference_m / 60.0
+  wheel_rpm = speed_mps / wheel_speed_per_rpm
+  return wheel_rpm * pole_pairs
+
 def queue_speed_limit_command(max_speed_kmh, force=False):
   global current_speed_limit_kmh
   if not force and max_speed_kmh == current_speed_limit_kmh:
     return
 
   if max_speed_kmh is None:
-    max_speed_kmh = get_normal_speed_limit_kmh()
+    display_speed_kmh = get_normal_speed_limit_kmh()
+    target_erpm = DEFAULT_NORMAL_ERPM
+  else:
+    display_speed_kmh = max_speed_kmh
+    target_erpm = speed_kmh_to_erpm(max_speed_kmh)
 
-  max_speed_mps = max_speed_kmh / 3.6
-  payload = build_mcconf_temp_payload(max_speed_mps)
+  payload = build_mcconf_temp_payload_erpm(target_erpm)
   enqueue_vesc_command(payload)
-  current_speed_limit_kmh = max_speed_kmh
+  current_speed_limit_kmh = display_speed_kmh
 
 def get_display_power():
   power = data.get('power', 0)
