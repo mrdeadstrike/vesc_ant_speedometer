@@ -2376,7 +2376,7 @@ while running:
     if button_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
       sec_to_exit = 0
 
-      if time.time() - timer_power_off > sec_to_exit:
+    if time.time() - timer_power_off > sec_to_exit and timer_power_off is not None:
         if not can_start_record:
           # Остановить запись
           recorder_proc.send_signal(signal.SIGINT)
