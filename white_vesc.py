@@ -2104,7 +2104,8 @@ while running:
     if button_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
       if trip_start_time is None:
         trip_start_time = time.time()
-    
+
+      full_off = False
       PAGE_NAME = "TRIP_STAT"
       trip_time = time.time() - trip_start_time
       minutes = int(trip_time // 60)
