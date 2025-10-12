@@ -202,7 +202,8 @@ vesc_command_queue = queue.Queue()
 
 BLUETOOTH_SUPPORTED = hasattr(socket, "AF_BLUETOOTH") and hasattr(socket, "BTPROTO_RFCOMM")
 
-MIRROR_CONFIG_PATH = "mirror_config.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MIRROR_CONFIG_PATH = os.path.join(BASE_DIR, "mirror_config.json")
 _default_mirror_config = {
   "bt_address": None,
   "channel": 1,
