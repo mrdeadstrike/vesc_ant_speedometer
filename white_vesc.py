@@ -514,7 +514,6 @@ mirror_controller = MirrorController(
   default_left=MIRROR_DEFAULT_LEFT,
   default_right=MIRROR_DEFAULT_RIGHT
 )
-mirror_unfold_needed = True
 mirror_fold_done = False
 
 def fold_mirrors_on_exit():
@@ -1571,14 +1570,6 @@ while running:
 
   screen.fill((254, 254, 254))
 
-  if mirror_unfold_needed:
-    try:
-      mirror_controller.apply_pose('unfolded')
-      mirror_controller.request_update()
-    except Exception as exc:
-      print(f"Не удалось разложить зеркала при старте: {exc}")
-    mirror_unfold_needed = False
-
   if miganie_tick > 3:
     miganie = not miganie
     miganie_tick = 0
@@ -2410,8 +2401,8 @@ while running:
         os.system('sudo shutdown now')
 
 
-pygame.display.flip()
-clock.tick(30)
+  pygame.display.flip()
+  clock.tick(30)
 
 
 
