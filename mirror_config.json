@@ -6,5 +6,9 @@
   "default_left": 120,
   "default_right": 120,
   "step_fine": 1,
-  "step_coarse": 5
+  "step_coarse": 5,
+  "folded_left": 120,
+  "folded_right": 120,
+  "unfolded_left": 120,
+  "unfolded_right": 120
 }

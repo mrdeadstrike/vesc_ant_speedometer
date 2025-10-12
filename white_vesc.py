@@ -212,7 +212,11 @@ _default_mirror_config = {
   "default_left": 120,
   "default_right": 120,
   "step_fine": 1,
-  "step_coarse": 5
+  "step_coarse": 5,
+  "folded_left": None,
+  "folded_right": None,
+  "unfolded_left": None,
+  "unfolded_right": None
 }
 
 mirror_config = dict(_default_mirror_config)
@@ -243,6 +247,13 @@ MIRROR_DEFAULT_RIGHT = _safe_int(mirror_config.get("default_right"), _default_mi
 MIRROR_FINE_STEP = max(1, _safe_int(mirror_config.get("step_fine"), _default_mirror_config["step_fine"]))
 MIRROR_COARSE_STEP = max(1, _safe_int(mirror_config.get("step_coarse"), _default_mirror_config["step_coarse"]))
 
+def save_mirror_config():
+  try:
+    with open(MIRROR_CONFIG_PATH, "w", encoding="utf-8") as mirror_config_file:
+      json.dump(mirror_config, mirror_config_file, ensure_ascii=False, indent=2)
+  except Exception as exc:
+    print(f"Не удалось сохранить {MIRROR_CONFIG_PATH}: {exc}")
+
 class MirrorController:
   def __init__(self, bt_address, channel, min_angle, max_angle, default_left, default_right):
     self.bt_address = bt_address
@@ -267,6 +278,10 @@ class MirrorController:
     self._rx_buffer = b""
     self._should_run = True
     self._command_queue = queue.Queue()
+    self._poses = {
+      'folded': self._load_pose('folded', default_left, default_right),
+      'unfolded': self._load_pose('unfolded', default_left, default_right)
+    }
 
     threading.Thread(target=self._worker_loop, daemon=True).start()
 
@@ -280,6 +295,17 @@ class MirrorController:
   def _clamp(self, angle):
     return max(self.min_angle, min(self.max_angle, int(angle)))
 
+  def _load_pose(self, pose_name, fallback_left, fallback_right):
+    left = mirror_config.get(f"{pose_name}_left")
+    right = mirror_config.get(f"{pose_name}_right")
+    pose = {
+      'left': self._clamp(left) if left is not None else self._clamp(fallback_left),
+      'right': self._clamp(right) if right is not None else self._clamp(fallback_right)
+    }
+    mirror_config[f"{pose_name}_left"] = pose['left']
+    mirror_config[f"{pose_name}_right"] = pose['right']
+    return pose
+
   def get_snapshot(self):
     with self._lock:
       return {
@@ -287,7 +313,11 @@ class MirrorController:
         'status': self._status,
         'target': dict(self._target),
         'actual': dict(self._actual),
-        'last_message': self._last_message
+        'last_message': self._last_message,
+        'poses': {
+          'folded': dict(self._poses['folded']),
+          'unfolded': dict(self._poses['unfolded'])
+        }
       }
 
   def adjust_target(self, side, delta):
@@ -307,6 +337,32 @@ class MirrorController:
 
   def request_update(self):
     self._enqueue_command("GET ALL")
+
+  def apply_pose(self, pose_name):
+    if pose_name not in self._poses:
+      return
+    pose = self._poses[pose_name]
+    for side, angle in pose.items():
+      if angle is not None:
+        self.set_target(side, angle)
+
+  def save_pose(self, pose_name):
+    if pose_name not in self._poses:
+      return
+    with self._lock:
+      if pose_name == 'folded':
+        self._poses['folded'] = {
+          'left': self._target['left'],
+          'right': self._target['right']
+        }
+      elif pose_name == 'unfolded':
+        self._poses['unfolded'] = {
+          'left': self._target['left'],
+          'right': self._target['right']
+        }
+      mirror_config[f"{pose_name}_left"] = self._poses[pose_name]['left']
+      mirror_config[f"{pose_name}_right"] = self._poses[pose_name]['right']
+    save_mirror_config()
 
   def _encode_side(self, side):
     return 'L' if side == 'left' else 'R'
@@ -452,6 +508,7 @@ mirror_controller = MirrorController(
   default_left=MIRROR_DEFAULT_LEFT,
   default_right=MIRROR_DEFAULT_RIGHT
 )
+save_mirror_config()
 
 eco_mode = False
 current_speed_limit_kmh = None
@@ -2137,12 +2194,23 @@ while running:
     range_text = f"Диапазон: {MIRROR_MIN_ANGLE}° - {MIRROR_MAX_ANGLE}°"
     draw_text_center(screen, range_text, font_tick, (90, 90, 90), 170)
 
+    poses = mirror_snapshot.get('poses', {})
+    folded_pose = poses.get('folded', {})
+    unfolded_pose = poses.get('unfolded', {})
+    def _pose_val(value):
+      return "--" if value is None else str(value)
+
+    folded_text = f"Сложено: Л {_pose_val(folded_pose.get('left'))}°  П {_pose_val(folded_pose.get('right'))}°"
+    unfolded_text = f"Разложено: Л {_pose_val(unfolded_pose.get('left'))}°  П {_pose_val(unfolded_pose.get('right'))}°"
+    draw_text_center(screen, folded_text, font_tick, (70, 70, 70), 200)
+    draw_text_center(screen, unfolded_text, font_tick, (70, 70, 70), 225)
+
     last_message = mirror_snapshot.get('last_message')
     if last_message:
       msg = last_message
       if len(msg) > 42:
         msg = msg[:39] + "..."
-      draw_text_center(screen, msg, font_tick, (120, 120, 120), 205)
+      draw_text_center(screen, msg, font_tick, (120, 120, 120), 255)
 
     def draw_mirror_section(label_text, side, center_x):
       panel_rect = pygame.Rect(int(center_x - 150), 240, 300, 360)
@@ -2181,12 +2249,48 @@ while running:
     draw_mirror_section("Левое зеркало", 'left', WIDTH * 0.28)
     draw_mirror_section("Правое зеркало", 'right', WIDTH * 0.72)
 
-    refresh_rect = pygame.Rect(WIDTH * 0.5 - 130, HEIGHT - 120, 260, 80)
+    refresh_rect = pygame.Rect(WIDTH * 0.5 - 130, HEIGHT - 320, 260, 70)
     refresh_color = (200, 200, 200) if touch_allowed else (230, 230, 230)
     pygame.draw.rect(screen, refresh_color, refresh_rect, border_radius=25)
     refresh_label = font_small.render("Обновить", True, (0, 0, 0))
     screen.blit(refresh_label, refresh_label.get_rect(center=refresh_rect.center))
     if touch_allowed and refresh_rect.collidepoint(mouse) and click[0]:
+      mirror_controller.request_update()
+
+    action_y = HEIGHT - 220
+    btn_width = 230
+    btn_height = 70
+    btn_spacing_x = 40
+
+    fold_rect = pygame.Rect(int(WIDTH * 0.5 - btn_width - btn_spacing_x / 2), action_y, btn_width, btn_height)
+    unfold_rect = pygame.Rect(int(WIDTH * 0.5 + btn_spacing_x / 2), action_y, btn_width, btn_height)
+    save_fold_rect = pygame.Rect(fold_rect.x, action_y + btn_height + 20, btn_width, btn_height)
+    save_unfold_rect = pygame.Rect(unfold_rect.x, action_y + btn_height + 20, btn_width, btn_height)
+
+    def draw_button(rect, caption, enabled=True):
+      color_active = (90, 170, 255)
+      color_disabled = (210, 210, 210)
+      color = color_active if enabled else color_disabled
+      pygame.draw.rect(screen, color, rect, border_radius=25)
+      label = font_tick.render(caption, True, (0, 0, 0))
+      screen.blit(label, label.get_rect(center=rect.center))
+
+    draw_button(fold_rect, "Сложить", touch_allowed)
+    draw_button(unfold_rect, "Разложить", touch_allowed)
+    draw_button(save_fold_rect, "Запомнить сложено", touch_allowed)
+    draw_button(save_unfold_rect, "Запомнить разложено", touch_allowed)
+
+    if touch_allowed and fold_rect.collidepoint(mouse) and click[0]:
+      mirror_controller.apply_pose('folded')
+      mirror_controller.request_update()
+    if touch_allowed and unfold_rect.collidepoint(mouse) and click[0]:
+      mirror_controller.apply_pose('unfolded')
+      mirror_controller.request_update()
+    if touch_allowed and save_fold_rect.collidepoint(mouse) and click[0]:
+      mirror_controller.save_pose('folded')
+      mirror_controller.request_update()
+    if touch_allowed and save_unfold_rect.collidepoint(mouse) and click[0]:
+      mirror_controller.save_pose('unfolded')
       mirror_controller.request_update()
 
     if not touch_allowed and IS_RASPBERY:
