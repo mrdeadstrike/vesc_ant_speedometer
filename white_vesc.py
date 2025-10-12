@@ -199,6 +199,259 @@ import json
 from vosk import Model, KaldiRecognizer
 
 vesc_command_queue = queue.Queue()
+
+BLUETOOTH_SUPPORTED = hasattr(socket, "AF_BLUETOOTH") and hasattr(socket, "BTPROTO_RFCOMM")
+
+MIRROR_CONFIG_PATH = "mirror_config.json"
+_default_mirror_config = {
+  "bt_address": None,
+  "channel": 1,
+  "min_angle": 60,
+  "max_angle": 150,
+  "default_left": 120,
+  "default_right": 120,
+  "step_fine": 1,
+  "step_coarse": 5
+}
+
+mirror_config = dict(_default_mirror_config)
+try:
+  with open(MIRROR_CONFIG_PATH, "r", encoding="utf-8") as mirror_config_file:
+    loaded_config = json.load(mirror_config_file)
+    if isinstance(loaded_config, dict):
+      for key, value in loaded_config.items():
+        if value is not None:
+          mirror_config[key] = value
+except FileNotFoundError:
+  pass
+except Exception as exc:
+  print(f"Не удалось загрузить {MIRROR_CONFIG_PATH}: {exc}")
+
+def _safe_int(value, fallback):
+  try:
+    return int(value)
+  except (TypeError, ValueError):
+    return fallback
+
+MIRROR_BT_ADDRESS = mirror_config.get("bt_address") or None
+MIRROR_BT_CHANNEL = _safe_int(mirror_config.get("channel"), 1)
+MIRROR_MIN_ANGLE = _safe_int(mirror_config.get("min_angle"), _default_mirror_config["min_angle"])
+MIRROR_MAX_ANGLE = _safe_int(mirror_config.get("max_angle"), _default_mirror_config["max_angle"])
+MIRROR_DEFAULT_LEFT = _safe_int(mirror_config.get("default_left"), _default_mirror_config["default_left"])
+MIRROR_DEFAULT_RIGHT = _safe_int(mirror_config.get("default_right"), _default_mirror_config["default_right"])
+MIRROR_FINE_STEP = max(1, _safe_int(mirror_config.get("step_fine"), _default_mirror_config["step_fine"]))
+MIRROR_COARSE_STEP = max(1, _safe_int(mirror_config.get("step_coarse"), _default_mirror_config["step_coarse"]))
+
+class MirrorController:
+  def __init__(self, bt_address, channel, min_angle, max_angle, default_left, default_right):
+    self.bt_address = bt_address
+    self.channel = channel
+    self.min_angle = min_angle
+    self.max_angle = max_angle
+
+    self._lock = threading.Lock()
+    self._target = {
+      'left': self._clamp(default_left),
+      'right': self._clamp(default_right)
+    }
+    self._actual = {
+      'left': None,
+      'right': None
+    }
+    self._connected = False
+    self._status = self._initial_status()
+    self._last_message = ""
+
+    self._sock = None
+    self._rx_buffer = b""
+    self._should_run = True
+    self._command_queue = queue.Queue()
+
+    threading.Thread(target=self._worker_loop, daemon=True).start()
+
+  def _initial_status(self):
+    if not BLUETOOTH_SUPPORTED:
+      return "Bluetooth недоступен"
+    if not self.bt_address:
+      return "Укажи bt_address в mirror_config.json"
+    return "Подключение..."
+
+  def _clamp(self, angle):
+    return max(self.min_angle, min(self.max_angle, int(angle)))
+
+  def get_snapshot(self):
+    with self._lock:
+      return {
+        'connected': self._connected,
+        'status': self._status,
+        'target': dict(self._target),
+        'actual': dict(self._actual),
+        'last_message': self._last_message
+      }
+
+  def adjust_target(self, side, delta):
+    if side not in self._target:
+      return
+    with self._lock:
+      new_angle = self._target[side] + delta
+    self.set_target(side, new_angle)
+
+  def set_target(self, side, angle):
+    if side not in self._target:
+      return
+    clamped = self._clamp(angle)
+    with self._lock:
+      self._target[side] = clamped
+    self._enqueue_command(f"SET {self._encode_side(side)} {clamped}")
+
+  def request_update(self):
+    self._enqueue_command("GET ALL")
+
+  def _encode_side(self, side):
+    return 'L' if side == 'left' else 'R'
+
+  def _decode_side(self, token):
+    if token == 'L':
+      return 'left'
+    if token == 'R':
+      return 'right'
+    return None
+
+  def _enqueue_command(self, line):
+    if not line:
+      return
+    self._command_queue.put(line)
+
+  def _worker_loop(self):
+    while self._should_run:
+      if not BLUETOOTH_SUPPORTED:
+        time.sleep(5)
+        continue
+
+      if not self.bt_address:
+        with self._lock:
+          self._connected = False
+          self._status = "Укажи bt_address в mirror_config.json"
+        time.sleep(5)
+        continue
+
+      try:
+        self._connect()
+        self._send_initial_sync()
+        self._main_loop()
+      except Exception as exc:
+        with self._lock:
+          self._connected = False
+          self._status = f"Ошибка: {exc}"
+        self._close_socket()
+        time.sleep(3)
+
+  def _connect(self):
+    if self._sock:
+      return
+
+    sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+    sock.settimeout(8.0)
+    sock.connect((self.bt_address, self.channel))
+    sock.settimeout(0.2)
+    self._sock = sock
+    self._rx_buffer = b""
+    with self._lock:
+      self._connected = True
+      self._status = "Подключено"
+
+  def _send_initial_sync(self):
+    for side in ('left', 'right'):
+      with self._lock:
+        target = self._target[side]
+      self._enqueue_command(f"SET {self._encode_side(side)} {target}")
+    self._enqueue_command("GET ALL")
+
+  def _main_loop(self):
+    while self._should_run and self._sock:
+      self._flush_commands()
+      self._poll_socket()
+
+  def _flush_commands(self):
+    if not self._sock:
+      return
+    try:
+      while True:
+        cmd = self._command_queue.get_nowait()
+        payload = (cmd + "\n").encode("ascii", errors="ignore")
+        self._sock.sendall(payload)
+    except queue.Empty:
+      pass
+
+  def _poll_socket(self):
+    if not self._sock:
+      return
+    try:
+      chunk = self._sock.recv(128)
+      if not chunk:
+        raise ConnectionError("ESP32 разорвал соединение")
+      self._rx_buffer += chunk
+      while b"\n" in self._rx_buffer:
+        line, self._rx_buffer = self._rx_buffer.split(b"\n", 1)
+        decoded = line.decode("utf-8", errors="ignore").strip()
+        if decoded:
+          self._handle_line(decoded)
+    except socket.timeout:
+      pass
+
+  def _handle_line(self, line):
+    with self._lock:
+      self._last_message = line
+    parts = line.split()
+    if not parts:
+      return
+
+    cmd = parts[0].upper()
+    if cmd in ("ANGLE", "OK") and len(parts) >= 3:
+      side = self._decode_side(parts[1].upper())
+      if side is None:
+        return
+      try:
+        angle = int(float(parts[2]))
+      except ValueError:
+        return
+      with self._lock:
+        self._actual[side] = self._clamp(angle)
+    elif cmd == "HELLO" and len(parts) >= 3:
+      try:
+        left = int(float(parts[1]))
+        right = int(float(parts[2]))
+      except ValueError:
+        return
+      with self._lock:
+        self._actual['left'] = self._clamp(left)
+        self._actual['right'] = self._clamp(right)
+        self._status = "Подключено"
+    elif cmd == "ERR":
+      with self._lock:
+        self._status = f"Ошибка: {' '.join(parts[1:])}"
+    elif cmd == "PONG":
+      with self._lock:
+        self._status = "Подключено"
+
+  def _close_socket(self):
+    if self._sock:
+      try:
+        self._sock.close()
+      except:
+        pass
+    self._sock = None
+    self._rx_buffer = b""
+
+mirror_controller = MirrorController(
+  bt_address=MIRROR_BT_ADDRESS,
+  channel=MIRROR_BT_CHANNEL,
+  min_angle=MIRROR_MIN_ANGLE,
+  max_angle=MIRROR_MAX_ANGLE,
+  default_left=MIRROR_DEFAULT_LEFT,
+  default_right=MIRROR_DEFAULT_RIGHT
+)
+
 eco_mode = False
 current_speed_limit_kmh = None
 eco_toggle_was_pressed = False
@@ -210,6 +463,7 @@ lock_restore_speed_kmh = None
 lock_keypad_pressed = False
 lock_prev_page = "SPEEDOMETER"
 PAGE_LOCK = "LOCK"
+PAGE_MIRROR = "MIRROR_ADJUST"
 
 # === НАСТРОЙКИ ===
 MODEL_PATH = "vosk-model-ru"  # путь к модели
@@ -1822,6 +2076,120 @@ while running:
     if status_pressed and not eco_toggle_was_pressed:
       set_eco_mode(not eco_mode)
     eco_toggle_was_pressed = status_pressed
+
+    # Кнопка регулировки зеркал
+    mirror_snapshot = mirror_controller.get_snapshot()
+    mirror_btn_rect = pygame.Rect(WIDTH * 0.5 - 160, HEIGHT - 130, 320, 110)
+    mirror_btn_color = (90, 170, 255) if mirror_snapshot['connected'] else (210, 210, 210)
+    pygame.draw.rect(screen, mirror_btn_color, mirror_btn_rect, border_radius=25)
+
+    mirror_title = font_small.render("Зеркала", True, (0, 0, 0))
+    screen.blit(mirror_title, mirror_title.get_rect(center=(mirror_btn_rect.centerx, mirror_btn_rect.top + 32)))
+
+    def _format_mirror_angle(side):
+      val = mirror_snapshot['actual'].get(side)
+      if val is None:
+        val = mirror_snapshot['target'].get(side)
+      return f"{val}°" if val is not None else "--°"
+
+    angle_line = f"Л:{_format_mirror_angle('left')}  П:{_format_mirror_angle('right')}"
+    angle_color = (10, 10, 10) if mirror_snapshot['connected'] else (80, 80, 80)
+    angle_label = font_tick.render(angle_line, True, angle_color)
+    screen.blit(angle_label, angle_label.get_rect(center=(mirror_btn_rect.centerx, mirror_btn_rect.top + 70)))
+
+    status_text = mirror_snapshot['status']
+    if len(status_text) > 28:
+      status_text = status_text[:27] + "..."
+    status_color = (0, 110, 0) if mirror_snapshot['connected'] else (120, 80, 80)
+    status_label = font_tick.render(status_text, True, status_color)
+    screen.blit(status_label, status_label.get_rect(center=(mirror_btn_rect.centerx, mirror_btn_rect.bottom - 25)))
+
+    mouse = pygame.mouse.get_pos()
+    click = pygame.mouse.get_pressed()
+    if mirror_btn_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
+      mirror_controller.request_update()
+      PAGE_NAME = PAGE_MIRROR
+
+  elif PAGE_NAME == PAGE_MIRROR:
+    mirror_snapshot = mirror_controller.get_snapshot()
+    touch_allowed = (not block_touch or not IS_RASPBERY)
+
+    mouse = pygame.mouse.get_pos()
+    click = pygame.mouse.get_pressed()
+
+    back_rect = pygame.Rect(12, 12, 160, 60)
+    pygame.draw.rect(screen, (220, 220, 220), back_rect, border_radius=20)
+    back_label = font_small.render("Назад", True, (0, 0, 0))
+    screen.blit(back_label, back_label.get_rect(center=back_rect.center))
+    if back_rect.collidepoint(mouse) and click[0]:
+      PAGE_NAME = "SPEEDOMETER"
+      continue
+
+    draw_text_center(screen, "Регулировка зеркал", font_small, (0, 0, 0), 90)
+
+    status_color = (0, 110, 0) if mirror_snapshot['connected'] else (160, 60, 60)
+    status_text = mirror_snapshot['status']
+    if len(status_text) > 40:
+      status_text = status_text[:37] + "..."
+    draw_text_center(screen, status_text, font_tick, status_color, 135)
+
+    range_text = f"Диапазон: {MIRROR_MIN_ANGLE}° - {MIRROR_MAX_ANGLE}°"
+    draw_text_center(screen, range_text, font_tick, (90, 90, 90), 170)
+
+    last_message = mirror_snapshot.get('last_message')
+    if last_message:
+      msg = last_message
+      if len(msg) > 42:
+        msg = msg[:39] + "..."
+      draw_text_center(screen, msg, font_tick, (120, 120, 120), 205)
+
+    def draw_mirror_section(label_text, side, center_x):
+      panel_rect = pygame.Rect(int(center_x - 150), 240, 300, 360)
+      pygame.draw.rect(screen, (240, 240, 240), panel_rect, border_radius=25)
+
+      title = font_small.render(label_text, True, (0, 0, 0))
+      screen.blit(title, title.get_rect(center=(panel_rect.centerx, panel_rect.top + 35)))
+
+      target = mirror_snapshot['target'].get(side)
+      actual = mirror_snapshot['actual'].get(side)
+
+      target_text = f"Цель: {target}°" if target is not None else "Цель: --°"
+      actual_text = f"Факт: {actual}°" if actual is not None else "Факт: --°"
+
+      target_label = font_tick.render(target_text, True, (0, 0, 0))
+      actual_label = font_tick.render(actual_text, True, (0, 0, 0))
+      screen.blit(target_label, target_label.get_rect(center=(panel_rect.centerx, panel_rect.top + 95)))
+      screen.blit(actual_label, actual_label.get_rect(center=(panel_rect.centerx, panel_rect.top + 135)))
+
+      buttons = [
+        (pygame.Rect(panel_rect.left + 15, panel_rect.top + 175, 120, 70), f"-{MIRROR_COARSE_STEP}°", -MIRROR_COARSE_STEP),
+        (pygame.Rect(panel_rect.right - 135, panel_rect.top + 175, 120, 70), f"+{MIRROR_COARSE_STEP}°", MIRROR_COARSE_STEP),
+        (pygame.Rect(panel_rect.left + 15, panel_rect.top + 265, 120, 70), f"-{MIRROR_FINE_STEP}°", -MIRROR_FINE_STEP),
+        (pygame.Rect(panel_rect.right - 135, panel_rect.top + 265, 120, 70), f"+{MIRROR_FINE_STEP}°", MIRROR_FINE_STEP),
+      ]
+
+      for rect, text, delta in buttons:
+        btn_color = (90, 170, 255) if touch_allowed else (210, 210, 210)
+        pygame.draw.rect(screen, btn_color, rect, border_radius=20)
+        btn_label = font_tick.render(text, True, (0, 0, 0))
+        screen.blit(btn_label, btn_label.get_rect(center=rect.center))
+        if touch_allowed and rect.collidepoint(mouse) and click[0]:
+          mirror_controller.adjust_target(side, delta)
+          mirror_controller.request_update()
+
+    draw_mirror_section("Левое зеркало", 'left', WIDTH * 0.28)
+    draw_mirror_section("Правое зеркало", 'right', WIDTH * 0.72)
+
+    refresh_rect = pygame.Rect(WIDTH * 0.5 - 130, HEIGHT - 120, 260, 80)
+    refresh_color = (200, 200, 200) if touch_allowed else (230, 230, 230)
+    pygame.draw.rect(screen, refresh_color, refresh_rect, border_radius=25)
+    refresh_label = font_small.render("Обновить", True, (0, 0, 0))
+    screen.blit(refresh_label, refresh_label.get_rect(center=refresh_rect.center))
+    if touch_allowed and refresh_rect.collidepoint(mouse) and click[0]:
+      mirror_controller.request_update()
+
+    if not touch_allowed and IS_RASPBERY:
+      draw_text_center(screen, "Остановись чтобы управлять зеркалами", font_tick, (180, 60, 60), HEIGHT - 40)
 
   #################### PAGE TRIP_STAT ###########################
   # добавить температуру моторов
