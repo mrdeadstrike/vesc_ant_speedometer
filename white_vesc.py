@@ -2366,18 +2366,19 @@ while running:
     if button_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
       sec_to_exit = 0
 
-    if time.time() - timer_power_off > sec_to_exit:
-      if not can_start_record:
-        # Остановить запись
-        recorder_proc.send_signal(signal.SIGINT)
-        recorder_proc.wait()
-        print(">>> Запись остановлена")
-      fold_mirrors_on_exit()
-      SaveData()
-      pygame.quit()
-      if full_off:
-        import os
-        print("OFF")
+      if time.time() - timer_power_off > sec_to_exit:
+        if not can_start_record:
+          # Остановить запись
+          recorder_proc.send_signal(signal.SIGINT)
+          recorder_proc.wait()
+          print(">>> Запись остановлена")
+        fold_mirrors_on_exit()
+        time.sleep(0.4)
+        SaveData()
+        pygame.quit()
+        if full_off:
+          import os
+          print("OFF")
         os.system('sudo shutdown now')
 
 
@@ -2387,4 +2388,5 @@ while running:
 
 
 fold_mirrors_on_exit()
+time.sleep(0.4)
 pygame.quit()
