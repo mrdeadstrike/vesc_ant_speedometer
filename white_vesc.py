@@ -278,8 +278,6 @@ class MirrorController:
       'folded': self._load_pose('folded', default_left, default_right),
       'unfolded': self._load_pose('unfolded', default_left, default_right)
     }
-    self.apply_pose('unfolded')
-    self.request_update()
 
     threading.Thread(target=self._worker_loop, daemon=True).start()
 
@@ -511,11 +509,17 @@ mirror_controller = MirrorController(
   default_left=MIRROR_DEFAULT_LEFT,
   default_right=MIRROR_DEFAULT_RIGHT
 )
+mirror_unfold_needed = True
+mirror_fold_done = False
 
 def fold_mirrors_on_exit():
+  global mirror_fold_done
+  if mirror_fold_done:
+    return
   try:
     mirror_controller.apply_pose('folded')
     mirror_controller.request_update()
+    mirror_fold_done = True
   except Exception as exc:
     print(f"Не удалось сложить зеркала при выходе: {exc}")
 
@@ -1561,6 +1565,14 @@ while running:
     continue
 
   screen.fill((254, 254, 254))
+
+  if mirror_unfold_needed:
+    try:
+      mirror_controller.apply_pose('unfolded')
+      mirror_controller.request_update()
+    except Exception as exc:
+      print(f"Не удалось разложить зеркала при старте: {exc}")
+    mirror_unfold_needed = False
 
   if miganie_tick > 3:
     miganie = not miganie
