@@ -17,8 +17,8 @@ const int RIGHT_SERVO_PIN = 26;
 const int SERVO_MIN_US = 500;
 const int SERVO_MAX_US = 2400;
 
-const int ANGLE_MIN = 60;
-const int ANGLE_MAX = 150;
+const int ANGLE_MIN = 0;
+const int ANGLE_MAX = 180;
 
 const int DEFAULT_LEFT_ANGLE = 120;
 const int DEFAULT_RIGHT_ANGLE = 120;
