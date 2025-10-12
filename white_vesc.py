@@ -2139,15 +2139,15 @@ while running:
 
     # Кнопка зеркал в верхней части экрана
     mirror_snapshot = mirror_controller.get_snapshot()
-    mirror_top_width = 120
+    mirror_top_width = 90
     mirror_top_height = 40
-    mirror_top_rect = pygame.Rect(WIDTH - mirror_top_width - 200, 12, mirror_top_width, mirror_top_height)
+    eco_rect = pygame.Rect(WIDTH - mirror_top_width - 12, 12, mirror_top_width, mirror_top_height)
+    mirror_top_rect = pygame.Rect(eco_rect.left - mirror_top_width - 10, 12, mirror_top_width, mirror_top_height)
     mirror_top_color = (90, 170, 255) if mirror_snapshot['connected'] else (210, 210, 210)
     pygame.draw.rect(screen, mirror_top_color, mirror_top_rect, border_radius=15)
     mirror_top_label = font_small.render("З", True, (0, 0, 0))
     screen.blit(mirror_top_label, mirror_top_label.get_rect(center=mirror_top_rect.center))
 
-    eco_rect = pygame.Rect(WIDTH - 100, 12, 90, 40)
     status_text = "Э" if eco_mode else "Н"
     status_color = (200, 200, 200)
     pygame.draw.rect(screen, status_color, eco_rect, border_radius=20)
