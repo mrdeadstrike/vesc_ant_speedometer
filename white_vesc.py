@@ -2137,51 +2137,31 @@ while running:
     if (not lock_active) and lock_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
       activate_lock()
 
-    # Переключатель ЭКО / НОРМА
-    status_rect = pygame.Rect(WIDTH - 170, 12, 160, 40)
+    # Кнопка зеркал в верхней части экрана
+    mirror_snapshot = mirror_controller.get_snapshot()
+    mirror_top_width = 120
+    mirror_top_height = 40
+    mirror_top_rect = pygame.Rect(WIDTH - mirror_top_width - 200, 12, mirror_top_width, mirror_top_height)
+    mirror_top_color = (90, 170, 255) if mirror_snapshot['connected'] else (210, 210, 210)
+    pygame.draw.rect(screen, mirror_top_color, mirror_top_rect, border_radius=15)
+    mirror_top_label = font_small.render("З", True, (0, 0, 0))
+    screen.blit(mirror_top_label, mirror_top_label.get_rect(center=mirror_top_rect.center))
+
+    eco_rect = pygame.Rect(WIDTH - 100, 12, 90, 40)
     status_text = "Э" if eco_mode else "Н"
     status_color = (200, 200, 200)
-    pygame.draw.rect(screen, status_color, status_rect, border_radius=25)
+    pygame.draw.rect(screen, status_color, eco_rect, border_radius=20)
     status_label = font_small.render(status_text, True, (0, 0, 0))
-    screen.blit(status_label, status_label.get_rect(center=status_rect.center))
+    screen.blit(status_label, status_label.get_rect(center=eco_rect.center))
 
     mouse = pygame.mouse.get_pos()
     click = pygame.mouse.get_pressed()
-    status_pressed = status_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY)
+    status_pressed = eco_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY)
     if status_pressed and not eco_toggle_was_pressed:
       set_eco_mode(not eco_mode)
     eco_toggle_was_pressed = status_pressed
 
-    # Кнопка регулировки зеркал
-    mirror_snapshot = mirror_controller.get_snapshot()
-    mirror_btn_rect = pygame.Rect(WIDTH * 0.5 - 160, HEIGHT - 130, 320, 110)
-    mirror_btn_color = (90, 170, 255) if mirror_snapshot['connected'] else (210, 210, 210)
-    pygame.draw.rect(screen, mirror_btn_color, mirror_btn_rect, border_radius=25)
-
-    mirror_title = font_small.render("Зеркала", True, (0, 0, 0))
-    screen.blit(mirror_title, mirror_title.get_rect(center=(mirror_btn_rect.centerx, mirror_btn_rect.top + 32)))
-
-    def _format_mirror_angle(side):
-      val = mirror_snapshot['actual'].get(side)
-      if val is None:
-        val = mirror_snapshot['target'].get(side)
-      return f"{val}°" if val is not None else "--°"
-
-    angle_line = f"Л:{_format_mirror_angle('left')}  П:{_format_mirror_angle('right')}"
-    angle_color = (10, 10, 10) if mirror_snapshot['connected'] else (80, 80, 80)
-    angle_label = font_tick.render(angle_line, True, angle_color)
-    screen.blit(angle_label, angle_label.get_rect(center=(mirror_btn_rect.centerx, mirror_btn_rect.top + 70)))
-
-    status_text = mirror_snapshot['status']
-    if len(status_text) > 28:
-      status_text = status_text[:27] + "..."
-    status_color = (0, 110, 0) if mirror_snapshot['connected'] else (120, 80, 80)
-    status_label = font_tick.render(status_text, True, status_color)
-    screen.blit(status_label, status_label.get_rect(center=(mirror_btn_rect.centerx, mirror_btn_rect.bottom - 25)))
-
-    mouse = pygame.mouse.get_pos()
-    click = pygame.mouse.get_pressed()
-    if mirror_btn_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
+    if mirror_top_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
       mirror_controller.request_update()
       PAGE_NAME = PAGE_MIRROR
 
