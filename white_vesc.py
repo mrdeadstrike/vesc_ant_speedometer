@@ -2064,8 +2064,7 @@ while running:
       minutes = int(trip_time // 60)
       seconds = int(trip_time % 60)
       data['trip_time'] = f"{minutes:02d}:{seconds:02d}"
-      if timer_power_off is None:
-        timer_power_off = time.time()
+      timer_power_off = time.time()
       SaveData()
 
     # Обновляем данные за поездку
@@ -2111,8 +2110,7 @@ while running:
       minutes = int(trip_time // 60)
       seconds = int(trip_time % 60)
       data['trip_time'] = f"{minutes:02d}:{seconds:02d}"
-      if timer_power_off is None:
-        timer_power_off = time.time()
+      timer_power_off = time.time()
       SaveData()
 
     # Кнопка начала записи
@@ -2361,8 +2359,12 @@ while running:
 
     sec_to_exit = 20#5
 
-    if full_off:
-      timer_off_t = f"До выключения: {sec_to_exit - (time.time() - timer_power_off):.0f} сек"
+    if timer_power_off is not None:
+      remaining = sec_to_exit - (time.time() - timer_power_off)
+      if remaining < 0:
+        remaining = 0
+      timer_label = "До выключения" if full_off else "До закрытия"
+      timer_off_t = f"{timer_label}: {remaining:.0f} сек"
       draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 730)
 
     # Кнопка раннего выключения системы
@@ -2376,20 +2378,29 @@ while running:
     if button_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
       sec_to_exit = 0
 
-    if time.time() - timer_power_off > sec_to_exit and timer_power_off is not None:
-        if not can_start_record:
-          # Остановить запись
-          recorder_proc.send_signal(signal.SIGINT)
-          recorder_proc.wait()
-          print(">>> Запись остановлена")
-        fold_mirrors_on_exit()
-        time.sleep(0.4)
-        SaveData()
-        pygame.quit()
-        if full_off:
-          import os
-          print("OFF")
+    should_exit_now = False
+    if timer_power_off is not None:
+      if sec_to_exit == 0:
+        should_exit_now = True
+      elif (time.time() - timer_power_off) > sec_to_exit:
+        should_exit_now = True
+
+    if should_exit_now:
+      if not can_start_record:
+        # Остановить запись
+        recorder_proc.send_signal(signal.SIGINT)
+        recorder_proc.wait()
+        print(">>> Запись остановлена")
+      fold_mirrors_on_exit()
+      time.sleep(0.4)
+      SaveData()
+      running = False
+      pygame.quit()
+      if full_off:
+        import os
+        print("OFF")
         os.system('sudo shutdown now')
+      break
 
 
   pygame.display.flip()
