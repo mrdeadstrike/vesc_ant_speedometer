@@ -254,6 +254,14 @@ def save_mirror_state(state):
 mirror_state = load_mirror_state()
 save_mirror_state(mirror_state)
 
+def wait_mouse_release(max_wait=0.6):
+  start = time.time()
+  while pygame.mouse.get_pressed()[0]:
+    pygame.event.pump()
+    if time.time() - start > max_wait:
+      break
+    time.sleep(0.01)
+
 class MirrorController:
   def __init__(self, bt_address, channel, min_angle, max_angle, default_left, default_right):
     self.bt_address = bt_address
@@ -2178,6 +2186,7 @@ while running:
     screen.blit(back_label, back_label.get_rect(center=back_rect.center))
     if back_rect.collidepoint(mouse) and click[0]:
       PAGE_NAME = "SPEEDOMETER"
+      wait_mouse_release()
       continue
 
     draw_text_center(screen, "Регулировка зеркал", font_small, (0, 0, 0), 90)
@@ -2351,9 +2360,9 @@ while running:
 
     sec_to_exit = 20#5
 
-    timer_off_t = f"До выключения: {sec_to_exit - (time.time() - timer_power_off):.0f} сек"
-    timer_off = font_small.render(timer_off_t, True, (0, 0, 0))
-    draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 730)
+    if full_off:
+      timer_off_t = f"До выключения: {sec_to_exit - (time.time() - timer_power_off):.0f} сек"
+      draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 730)
 
     # Кнопка раннего выключения системы
     button_rect = pygame.Rect(WIDTH * 0.5 - 210, 820, 410, 60)
