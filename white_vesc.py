@@ -203,57 +203,51 @@ vesc_command_queue = queue.Queue()
 BLUETOOTH_SUPPORTED = hasattr(socket, "AF_BLUETOOTH") and hasattr(socket, "BTPROTO_RFCOMM")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MIRROR_CONFIG_PATH = os.path.join(BASE_DIR, "mirror_config.json")
-# Диапазон по умолчанию можно расширить в конфиге при желании
-_default_mirror_config = {
-  "bt_address": None,
-  "channel": 1,
-  "min_angle": 0,
-  "max_angle": 180,
-  "default_left": 120,
-  "default_right": 120,
-  "step_fine": 1,
-  "step_coarse": 5,
-  "folded_left": None,
-  "folded_right": None,
-  "unfolded_left": None,
-  "unfolded_right": None
+
+# Настройки подключения и диапазоны держим прямо в коде
+MIRROR_BT_ADDRESS = "78:1C:3C:2C:31:16"
+MIRROR_BT_CHANNEL = 1
+MIRROR_MIN_ANGLE = 0
+MIRROR_MAX_ANGLE = 180
+MIRROR_DEFAULT_LEFT = 120
+MIRROR_DEFAULT_RIGHT = 120
+MIRROR_FINE_STEP = 1
+MIRROR_COARSE_STEP = 5
+
+# Отдельно храним сохранённые позы (сложено/разложено) в отдельном файле состояния
+MIRROR_STATE_PATH = os.path.join(BASE_DIR, "mirror_state.json")
+_default_mirror_state = {
+  "folded": {
+    "left": MIRROR_DEFAULT_LEFT,
+    "right": MIRROR_DEFAULT_RIGHT
+  },
+  "unfolded": {
+    "left": MIRROR_DEFAULT_LEFT,
+    "right": MIRROR_DEFAULT_RIGHT
+  }
 }
 
-mirror_config = dict(_default_mirror_config)
-try:
-  with open(MIRROR_CONFIG_PATH, "r", encoding="utf-8") as mirror_config_file:
-    loaded_config = json.load(mirror_config_file)
-    if isinstance(loaded_config, dict):
-      for key, value in loaded_config.items():
-        if value is not None:
-          mirror_config[key] = value
-except FileNotFoundError:
-  pass
-except Exception as exc:
-  print(f"Не удалось загрузить {MIRROR_CONFIG_PATH}: {exc}")
-
-def _safe_int(value, fallback):
+def load_mirror_state():
   try:
-    return int(value)
-  except (TypeError, ValueError):
-    return fallback
-
-MIRROR_BT_ADDRESS = mirror_config.get("bt_address") or None
-MIRROR_BT_CHANNEL = _safe_int(mirror_config.get("channel"), 1)
-MIRROR_MIN_ANGLE = _safe_int(mirror_config.get("min_angle"), _default_mirror_config["min_angle"])
-MIRROR_MAX_ANGLE = _safe_int(mirror_config.get("max_angle"), _default_mirror_config["max_angle"])
-MIRROR_DEFAULT_LEFT = _safe_int(mirror_config.get("default_left"), _default_mirror_config["default_left"])
-MIRROR_DEFAULT_RIGHT = _safe_int(mirror_config.get("default_right"), _default_mirror_config["default_right"])
-MIRROR_FINE_STEP = max(1, _safe_int(mirror_config.get("step_fine"), _default_mirror_config["step_fine"]))
-MIRROR_COARSE_STEP = max(1, _safe_int(mirror_config.get("step_coarse"), _default_mirror_config["step_coarse"]))
-
-def save_mirror_config():
-  try:
-    with open(MIRROR_CONFIG_PATH, "w", encoding="utf-8") as mirror_config_file:
-      json.dump(mirror_config, mirror_config_file, ensure_ascii=False, indent=2)
+    with open(MIRROR_STATE_PATH, "r", encoding="utf-8") as state_file:
+      state = json.load(state_file)
+      if isinstance(state, dict):
+        return state
+  except FileNotFoundError:
+    pass
   except Exception as exc:
-    print(f"Не удалось сохранить {MIRROR_CONFIG_PATH}: {exc}")
+    print(f"Не удалось загрузить {MIRROR_STATE_PATH}: {exc}")
+  return json.loads(json.dumps(_default_mirror_state))
+
+def save_mirror_state(state):
+  try:
+    with open(MIRROR_STATE_PATH, "w", encoding="utf-8") as state_file:
+      json.dump(state, state_file, ensure_ascii=False, indent=2)
+  except Exception as exc:
+    print(f"Не удалось сохранить {MIRROR_STATE_PATH}: {exc}")
+
+mirror_state = load_mirror_state()
+save_mirror_state(mirror_state)
 
 class MirrorController:
   def __init__(self, bt_address, channel, min_angle, max_angle, default_left, default_right):
@@ -279,6 +273,7 @@ class MirrorController:
     self._rx_buffer = b""
     self._should_run = True
     self._command_queue = queue.Queue()
+    self._state = mirror_state
     self._poses = {
       'folded': self._load_pose('folded', default_left, default_right),
       'unfolded': self._load_pose('unfolded', default_left, default_right)
@@ -290,21 +285,24 @@ class MirrorController:
     if not BLUETOOTH_SUPPORTED:
       return "Bluetooth недоступен"
     if not self.bt_address:
-      return "Укажи bt_address в mirror_config.json"
+      return "Укажи bt_address в white_vesc.py"
     return "Подключение..."
 
   def _clamp(self, angle):
     return max(self.min_angle, min(self.max_angle, int(angle)))
 
   def _load_pose(self, pose_name, fallback_left, fallback_right):
-    left = mirror_config.get(f"{pose_name}_left")
-    right = mirror_config.get(f"{pose_name}_right")
+    pose_data = self._state.get(pose_name) or {}
+    left = pose_data.get("left")
+    right = pose_data.get("right")
     pose = {
       'left': self._clamp(left) if left is not None else self._clamp(fallback_left),
       'right': self._clamp(right) if right is not None else self._clamp(fallback_right)
     }
-    mirror_config[f"{pose_name}_left"] = pose['left']
-    mirror_config[f"{pose_name}_right"] = pose['right']
+    self._state[pose_name] = {
+      'left': pose['left'],
+      'right': pose['right']
+    }
     return pose
 
   def get_snapshot(self):
@@ -361,9 +359,11 @@ class MirrorController:
           'left': self._target['left'],
           'right': self._target['right']
         }
-      mirror_config[f"{pose_name}_left"] = self._poses[pose_name]['left']
-      mirror_config[f"{pose_name}_right"] = self._poses[pose_name]['right']
-    save_mirror_config()
+      self._state[pose_name] = {
+        'left': self._poses[pose_name]['left'],
+        'right': self._poses[pose_name]['right']
+      }
+    save_mirror_state(self._state)
 
   def _encode_side(self, side):
     return 'L' if side == 'left' else 'R'
@@ -389,7 +389,7 @@ class MirrorController:
       if not self.bt_address:
         with self._lock:
           self._connected = False
-          self._status = "Укажи bt_address в mirror_config.json"
+          self._status = "Укажи bt_address в white_vesc.py"
         time.sleep(5)
         continue
 
@@ -509,7 +509,6 @@ mirror_controller = MirrorController(
   default_left=MIRROR_DEFAULT_LEFT,
   default_right=MIRROR_DEFAULT_RIGHT
 )
-save_mirror_config()
 
 eco_mode = False
 current_speed_limit_kmh = None
