@@ -109,6 +109,11 @@ def increase_tws_volume():
   # Устанавливаем громкость
   subprocess.run(["pactl", "set-sink-volume", sink_name, "120%"])
   add_speak_message("К поездке все готово")
+  try:
+    mirror_controller.apply_pose('unfolded')
+    mirror_controller.request_update()
+  except Exception as exc:
+    print(f"Не удалось разложить зеркала после установки громкости: {exc}")
 
 if IS_RASPBERY:
   threading.Thread(target=increase_tws_volume, daemon=True).start()
