@@ -278,6 +278,8 @@ class MirrorController:
       'folded': self._load_pose('folded', default_left, default_right),
       'unfolded': self._load_pose('unfolded', default_left, default_right)
     }
+    self.apply_pose('unfolded')
+    self.request_update()
 
     threading.Thread(target=self._worker_loop, daemon=True).start()
 
@@ -509,6 +511,13 @@ mirror_controller = MirrorController(
   default_left=MIRROR_DEFAULT_LEFT,
   default_right=MIRROR_DEFAULT_RIGHT
 )
+
+def fold_mirrors_on_exit():
+  try:
+    mirror_controller.apply_pose('folded')
+    mirror_controller.request_update()
+  except Exception as exc:
+    print(f"Не удалось сложить зеркала при выходе: {exc}")
 
 eco_mode = False
 current_speed_limit_kmh = None
@@ -2375,6 +2384,7 @@ while running:
         recorder_proc.send_signal(signal.SIGINT)
         recorder_proc.wait()
         print(">>> Запись остановлена")
+      fold_mirrors_on_exit()
       SaveData()
       pygame.quit()
       if full_off:
@@ -2383,9 +2393,10 @@ while running:
         os.system('sudo shutdown now')
 
 
-  pygame.display.flip()
-  clock.tick(30)
+pygame.display.flip()
+clock.tick(30)
 
-  
 
+
+fold_mirrors_on_exit()
 pygame.quit()
