@@ -1,8 +1,8 @@
 {
   "bt_address": "78:1C:3C:2C:31:16",
   "channel": 1,
-  "min_angle": 60,
-  "max_angle": 150,
+  "min_angle": 0,
+  "max_angle": 180,
   "default_left": 120,
   "default_right": 120,
   "step_fine": 1,

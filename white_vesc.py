@@ -204,11 +204,12 @@ BLUETOOTH_SUPPORTED = hasattr(socket, "AF_BLUETOOTH") and hasattr(socket, "BTPRO
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MIRROR_CONFIG_PATH = os.path.join(BASE_DIR, "mirror_config.json")
+# Диапазон по умолчанию можно расширить в конфиге при желании
 _default_mirror_config = {
   "bt_address": None,
   "channel": 1,
-  "min_angle": 60,
-  "max_angle": 150,
+  "min_angle": 0,
+  "max_angle": 180,
   "default_left": 120,
   "default_right": 120,
   "step_fine": 1,
