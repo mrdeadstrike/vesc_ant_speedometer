@@ -1,2 +1,4 @@
 mainData.txt
 vesc_tool-master
+mirror_state.json
+__pycache__/

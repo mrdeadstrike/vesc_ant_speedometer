@@ -17,8 +17,8 @@ const int RIGHT_SERVO_PIN = 26;
 const int SERVO_MIN_US = 500;
 const int SERVO_MAX_US = 2400;
 
-const int ANGLE_MIN = 0;
-const int ANGLE_MAX = 180;
+const int ANGLE_MIN = -90;
+const int ANGLE_MAX = 270;
 
 const int DEFAULT_LEFT_ANGLE = 120;
 const int DEFAULT_RIGHT_ANGLE = 120;
@@ -64,6 +64,13 @@ bool tryParseInt(const String &text, int &outValue) {
   return true;
 }
 
+int angleToPulse(int angle) {
+  float fraction = float(angle - ANGLE_MIN) / float(ANGLE_MAX - ANGLE_MIN);
+  fraction = constrain(fraction, 0.0f, 1.0f);
+  int pulse = SERVO_MIN_US + int(fraction * float(SERVO_MAX_US - SERVO_MIN_US));
+  return pulse;
+}
+
 void sendAngle(const char side, int value) {
   SerialBT.print("ANGLE ");
   SerialBT.print(side);
@@ -73,21 +80,21 @@ void sendAngle(const char side, int value) {
 
 void setLeftAngle(int angle) {
   currentLeftAngle = clampAngle(angle);
-  leftServo.write(currentLeftAngle);
+  leftServo.writeMicroseconds(angleToPulse(currentLeftAngle));
   sendAngle('L', currentLeftAngle);
 }
 
 void setRightAngle(int angle) {
   currentRightAngle = clampAngle(angle);
-  rightServo.write(currentRightAngle);
+  rightServo.writeMicroseconds(angleToPulse(currentRightAngle));
   sendAngle('R', currentRightAngle);
 }
 
 void setAngles(int leftAngle, int rightAngle) {
   currentLeftAngle = clampAngle(leftAngle);
   currentRightAngle = clampAngle(rightAngle);
-  leftServo.write(currentLeftAngle);
-  rightServo.write(currentRightAngle);
+  leftServo.writeMicroseconds(angleToPulse(currentLeftAngle));
+  rightServo.writeMicroseconds(angleToPulse(currentRightAngle));
   sendAngle('L', currentLeftAngle);
   sendAngle('R', currentRightAngle);
 }

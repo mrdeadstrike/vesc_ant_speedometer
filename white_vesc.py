@@ -207,8 +207,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Настройки подключения и диапазоны держим прямо в коде
 MIRROR_BT_ADDRESS = "78:1C:3C:2C:31:16"
 MIRROR_BT_CHANNEL = 1
-MIRROR_MIN_ANGLE = 0
-MIRROR_MAX_ANGLE = 180
+MIRROR_MIN_ANGLE = -90
+MIRROR_MAX_ANGLE = 270
 MIRROR_DEFAULT_LEFT = 120
 MIRROR_DEFAULT_RIGHT = 120
 MIRROR_FINE_STEP = 1
