@@ -19,7 +19,8 @@ COMM_SET_MCCONF_TEMP = 48
 COMM_SET_MCCONF_TEMP_SETUP = 49
 
 ECO_SPEED_LIMIT_KMH = 49.0
-DEFAULT_NORMAL_ERPM = 100000.0
+ECO_SPEED_LIMIT_ERPM = 14200.0
+DEFAULT_NORMAL_ERPM = 1000000.0
 ECO_POWER_DISPLAY_LIMIT = 2400
 LOCK_PASSWORD = "1024"
 LOCK_KEYPAD_LAYOUT = [
@@ -537,12 +538,13 @@ def fold_mirrors_on_exit():
 
 eco_mode = False
 current_speed_limit_kmh = None
+current_speed_limit_erpm = None
 eco_toggle_was_pressed = False
 NORMAL_SPEED_LIMIT_KMH = None
 lock_active = False
 lock_input = ""
 lock_message = ""
-lock_restore_speed_kmh = None
+lock_restore_speed = None
 lock_keypad_pressed = False
 lock_prev_page = "SPEEDOMETER"
 PAGE_LOCK = "LOCK"
@@ -764,21 +766,25 @@ def speed_kmh_to_erpm(speed_kmh):
   wheel_rpm = speed_mps / wheel_speed_per_rpm
   return wheel_rpm * pole_pairs
 
-def queue_speed_limit_command(max_speed_kmh, force=False):
-  global current_speed_limit_kmh
-  if not force and max_speed_kmh == current_speed_limit_kmh:
+def queue_speed_limit_erpm(target_erpm, display_speed_kmh, force=False):
+  global current_speed_limit_kmh, current_speed_limit_erpm
+  if target_erpm is None:
     return
+  if not force and current_speed_limit_erpm == target_erpm and current_speed_limit_kmh == display_speed_kmh:
+    return
+  payload = build_mcconf_temp_payload_erpm(target_erpm)
+  enqueue_vesc_command(payload)
+  current_speed_limit_kmh = display_speed_kmh
+  current_speed_limit_erpm = target_erpm
 
+def queue_speed_limit_command(max_speed_kmh, force=False):
   if max_speed_kmh is None:
     display_speed_kmh = get_normal_speed_limit_kmh()
     target_erpm = DEFAULT_NORMAL_ERPM
   else:
     display_speed_kmh = max_speed_kmh
     target_erpm = speed_kmh_to_erpm(max_speed_kmh)
-
-  payload = build_mcconf_temp_payload_erpm(target_erpm)
-  enqueue_vesc_command(payload)
-  current_speed_limit_kmh = display_speed_kmh
+  queue_speed_limit_erpm(target_erpm, display_speed_kmh, force=force)
 
 def get_display_power():
   power = data.get('power', 0)
@@ -787,29 +793,35 @@ def get_display_power():
   return power
 
 def activate_lock():
-  global lock_active, lock_input, lock_message, lock_restore_speed_kmh, lock_prev_page, PAGE_NAME
+  global lock_active, lock_input, lock_message, lock_restore_speed, lock_prev_page, PAGE_NAME
   if lock_active:
     return
   lock_active = True
   lock_input = ""
   lock_message = ""
-  lock_restore_speed_kmh = current_speed_limit_kmh
+  if current_speed_limit_erpm is not None and current_speed_limit_kmh is not None:
+    lock_restore_speed = (current_speed_limit_kmh, current_speed_limit_erpm)
+  else:
+    lock_restore_speed = None
   queue_speed_limit_command(0, force=True)
   add_speak_message("Самокат заблокирован")
   lock_prev_page = PAGE_NAME
   PAGE_NAME = PAGE_LOCK
 
 def deactivate_lock(unlocked):
-  global lock_active, lock_input, lock_message, lock_restore_speed_kmh, lock_keypad_pressed, lock_prev_page, PAGE_NAME
+  global lock_active, lock_input, lock_message, lock_restore_speed, lock_keypad_pressed, lock_prev_page, PAGE_NAME
   if not lock_active:
     return
   lock_active = False
   lock_input = ""
   lock_message = ""
-  restore_speed = lock_restore_speed_kmh
-  lock_restore_speed_kmh = None
+  restore_speed = lock_restore_speed
+  lock_restore_speed = None
   lock_keypad_pressed = False
-  queue_speed_limit_command(restore_speed, force=True)
+  if restore_speed and restore_speed[0] is not None and restore_speed[1] is not None:
+    queue_speed_limit_erpm(restore_speed[1], restore_speed[0], force=True)
+  else:
+    queue_speed_limit_command(None, force=True)
   if unlocked:
     add_speak_message("Самокат разблокирован")
   PAGE_NAME = lock_prev_page if lock_prev_page else "SPEEDOMETER"
@@ -897,7 +909,7 @@ def set_eco_mode(enabled):
     return
 
   if enabled:
-    queue_speed_limit_command(ECO_SPEED_LIMIT_KMH)
+    queue_speed_limit_erpm(ECO_SPEED_LIMIT_ERPM, ECO_SPEED_LIMIT_KMH)
     add_speak_message("Эко режим активирован")
   else:
     queue_speed_limit_command(None)
@@ -906,9 +918,9 @@ def set_eco_mode(enabled):
   eco_mode = enabled
 
 def requeue_current_speed_limit():
-  if current_speed_limit_kmh is None:
+  if current_speed_limit_erpm is None or current_speed_limit_kmh is None:
     return
-  queue_speed_limit_command(current_speed_limit_kmh, force=True)
+  queue_speed_limit_erpm(current_speed_limit_erpm, current_speed_limit_kmh, force=True)
 
 def parse_vesc_payload(payload, forwarded=False):
   try:
