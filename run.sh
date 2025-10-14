@@ -18,11 +18,13 @@ cleanup() {
 
 trap cleanup EXIT
 
+sleep 10
+
 if [[ -x "${BLE_SCRIPT}" ]]; then
   echo "Запуск BLE-моста..."
   "${BLE_SCRIPT}" &
   bridge_pid=$!
-  sleep 2
+  sleep 10
 else
   echo "Внимание: ${BLE_SCRIPT} не найден или не исполняемый. Пропускаю запуск BLE-моста." >&2
 fi
