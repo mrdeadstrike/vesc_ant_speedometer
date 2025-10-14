@@ -39,6 +39,7 @@ CELL_COUNT = 20
 
 # Укажи порт вручную, если нужно (например "/dev/rfcomm0")
 VESC_PORT_OVERRIDE = "/tmp/vesc-ble"
+BMS_PORT_OVERRIDE = "/tmp/bms-ble"
 DEFAULT_VESC_SERIAL_TIMEOUT = 0.5
 
 GREEN_COLOR = (0, 160, 0)
@@ -1175,6 +1176,43 @@ def iter_vesc_port_candidates(explicit_port=None):
     yield fallback
 
 
+def iter_bms_port_candidates(explicit_port=None):
+  seen = set()
+  if explicit_port:
+    print(f"Используем BMS порт из параметров: {explicit_port}", flush=True)
+    yield explicit_port
+    seen.add(explicit_port)
+
+  if BMS_PORT_OVERRIDE and BMS_PORT_OVERRIDE not in seen:
+    print(f"Используем BMS_PORT_OVERRIDE: {BMS_PORT_OVERRIDE}", flush=True)
+    yield BMS_PORT_OVERRIDE
+    seen.add(BMS_PORT_OVERRIDE)
+
+  env_port = os.environ.get("BMS_SERIAL_PORT")
+  if env_port and env_port not in seen:
+    print(f"Используем порт из окружения BMS_SERIAL_PORT={env_port}", flush=True)
+    yield env_port
+    seen.add(env_port)
+
+  default_paths = ["/tmp/bms-ble"]
+  for path in default_paths:
+    if path not in seen:
+      yield path
+      seen.add(path)
+
+  patterns = ['/dev/rfcomm*', '/dev/ttyUSB*', '/dev/ttyS*']
+  for pattern in patterns:
+    for candidate in sorted(glob.glob(pattern)):
+      if candidate not in seen:
+        print(f"Найден кандидат BMS порта {candidate} по шаблону {pattern}", flush=True)
+        yield candidate
+        seen.add(candidate)
+
+  fallback = '/dev/ttyUSB0'
+  if fallback not in seen:
+    yield fallback
+
+
 def read_сontrollers(
                 port_name=None,
                 baudrate=115200):
@@ -1293,45 +1331,47 @@ def read_bms_data(ser):
     time.sleep(0.1)
 
 def read_bms(
-                port_name='/dev/ttyUSB0', #Ubuntu
-                #port_name='/dev/ttyUSB0', #Raspbery PI
+                port_name=None,
                 baudrate=19200):
   global BMS_LOST
   if IS_RASPBERY or not IS_MAC:
     while True:
-      try:
-        ser = serial.Serial(port_name, baudrate, timeout=0.1)
-        print("bms port open")
-        BMS_LOST = False
-      except Exception as e:
-        BMS_LOST = True
+      ser = None
+      current_port = None
+      for candidate in iter_bms_port_candidates(port_name):
         try:
-          ser.close()
-          #add_speak_message("Отладка БМС 1")
-        except:
-          #add_speak_message("Отладка БМС 2")
+          ser = serial.Serial(candidate, baudrate, timeout=0.1)
+          current_port = candidate
+          print(f"BMS port open: {candidate}")
+          BMS_LOST = False
+          break
+        except Exception as e:
+          print(f"Не удалось открыть BMS порт {candidate}: {e}")
+          if candidate == (port_name or BMS_PORT_OVERRIDE) or candidate == BMS_PORT_OVERRIDE:
+            print("Проверь BLE-мост для BMS (./start_ble_bms_bridge.sh) и наличие /tmp/bms-ble")
           ser = None
-        print("Не удалось открыть порт:", e)
+      if ser is None:
+        BMS_LOST = True
+        print("BMS порты не открылись, повтор через 2 секунды")
         time.sleep(2)
         continue
 
       try:
         read_bms_data(ser)
-      except:
+      except Exception as exc:
+        BMS_LOST = True
+        print(f"BMS ошибка чтения ({current_port}): {exc}")
+        time.sleep(2)
+      finally:
         try:
           ser.close()
-          #add_speak_message("Ошибка БМС 1")
-        except:
+        except Exception:
           ser = None
-          #add_speak_message("Ошибка БМС 2")
-        BMS_LOST = True
-        print("bms lost")
-        time.sleep(2)
       time.sleep(2)
 
 
 
-threading.Thread(target=read_bms, daemon=True).start()
+threading.Thread(target=read_bms, kwargs={"port_name": BMS_PORT_OVERRIDE}, daemon=True).start()
 
 ######## INTERFACE ###########
 import pygame
