@@ -1028,10 +1028,12 @@ def read_serial(ser):
     ser.write(packet_master)
     header = ser.read(2)
     if not header:
+      print("VESC master: пустой ответ (timeout)")
       process_pending_vesc_commands(ser)
       time.sleep(0.1)
       continue
     if header[0] != 2:
+      print(f"VESC master: неожиданный заголовок {header!r}")
       ser.reset_input_buffer()
       time.sleep(0.1)
       continue
@@ -1082,10 +1084,12 @@ def read_serial(ser):
     ser.write(packet)
     header = ser.read(2)
     if not header:
+      print("VESC slave: пустой ответ (timeout)")
       process_pending_vesc_commands(ser)
       time.sleep(0.1)
       continue
     if header[0] != 2:
+      print(f"VESC slave: неожиданный заголовок {header!r}")
       ser.reset_input_buffer()
       time.sleep(0.1)
       continue
@@ -1119,15 +1123,18 @@ def read_serial(ser):
 def iter_vesc_port_candidates(explicit_port=None):
   seen = set()
   if explicit_port:
+    print(f"Используем порт из параметров: {explicit_port}")
     yield explicit_port
     seen.add(explicit_port)
 
   if VESC_PORT_OVERRIDE and VESC_PORT_OVERRIDE not in seen:
+    print(f"Используем VESC_PORT_OVERRIDE: {VESC_PORT_OVERRIDE}")
     yield VESC_PORT_OVERRIDE
     seen.add(VESC_PORT_OVERRIDE)
 
   env_port = os.environ.get("VESC_SERIAL_PORT")
   if env_port and env_port not in seen:
+    print(f"Используем порт из окружения VESC_SERIAL_PORT={env_port}")
     yield env_port
     seen.add(env_port)
 
@@ -1140,6 +1147,7 @@ def iter_vesc_port_candidates(explicit_port=None):
   for pattern in patterns:
     for candidate in sorted(glob.glob(pattern)):
       if candidate not in seen:
+        print(f"Найден кандидат порта {candidate} по шаблону {pattern}")
         yield candidate
         seen.add(candidate)
 
@@ -1156,6 +1164,7 @@ def read_сontrollers(
       ser = None
       current_port = None
       for candidate in iter_vesc_port_candidates(port_name):
+        print(f"Пытаемся открыть порт {candidate}")
         try:
           ser = serial.Serial(candidate, baudrate, timeout=0.1)
           current_port = candidate
@@ -1165,6 +1174,7 @@ def read_сontrollers(
           print(f"Не удалось открыть порт {candidate}: {e}")
           ser = None
       if ser is None:
+        print("Порты не открылись, повтор через 2 секунды")
         time.sleep(2)
         continue
 
