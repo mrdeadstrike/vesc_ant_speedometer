@@ -4,7 +4,7 @@
 [Desktop Entry]
 Name=My Python Script
 Comment=Запуск скрипта
-Exec=python3 Documents/vesc_ant_speedometer/white_vesc.py
+Exec=python3 Documents/vesc_ant_speedometer/speedometer.py
 Icon=utilities-terminal
 Terminal=true
 Type=Application
@@ -16,7 +16,7 @@ chmod +x ~/Desktop/MyScript.desktop
 
 ### Подключение VESC по Bluetooth
 - После привязки VESC через `bluetoothctl` убедитесь, что появилось устройство `/dev/rfcommX` (`ls /dev/rfcomm*`).
-- Укажите порт (переменная окружения `VESC_SERIAL_PORT=/dev/rfcomm0` или измените `VESC_PORT_OVERRIDE` в `white_vesc.py`).
+- Укажите порт (переменная окружения `VESC_SERIAL_PORT=/dev/rfcomm0` или измените `VESC_PORT_OVERRIDE` в `speedometer.py`).
 - Скрипт автоматически попробует `rfcomm`, если USB-порт недоступен.
 
 ### BLE-мост (если модуль только BLE UART)
@@ -25,5 +25,5 @@ chmod +x ~/Desktop/MyScript.desktop
 - Основной скрипт уже использует этот путь по умолчанию (`VESC_PORT_OVERRIDE`).
 
 ### Общий запуск
-- Выполните `./run.sh`: скрипт стартует BLE-мост (если доступен) и затем запускает `white_vesc.py`.
+- Выполните `./run.sh`: скрипт стартует BLE-мост (если доступен) и затем запускает `speedometer.py`.
 - Выход из Python-приложения автоматически завершает BLE-мост.

@@ -303,7 +303,7 @@ class MirrorController:
     if not BLUETOOTH_SUPPORTED:
       return "Bluetooth недоступен"
     if not self.bt_address:
-      return "Укажи bt_address в white_vesc.py"
+      return "Укажи bt_address в speedometer.py"
     return "Подключение..."
 
   def _clamp(self, angle):
@@ -407,7 +407,7 @@ class MirrorController:
       if not self.bt_address:
         with self._lock:
           self._connected = False
-          self._status = "Укажи bt_address в white_vesc.py"
+          self._status = "Укажи bt_address в speedometer.py"
         time.sleep(5)
         continue
 

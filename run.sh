@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BLE_SCRIPT="${SCRIPT_DIR}/start_ble_bridge.sh"
-PYTHON_SCRIPT="${SCRIPT_DIR}/white_vesc.py"
+PYTHON_SCRIPT="${SCRIPT_DIR}/speedometer.py"
 
 bridge_pid=""
 
