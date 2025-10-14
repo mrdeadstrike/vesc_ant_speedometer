@@ -18,3 +18,8 @@ chmod +x ~/Desktop/MyScript.desktop
 - После привязки VESC через `bluetoothctl` убедитесь, что появилось устройство `/dev/rfcommX` (`ls /dev/rfcomm*`).
 - Укажите порт (переменная окружения `VESC_SERIAL_PORT=/dev/rfcomm0` или измените `VESC_PORT_OVERRIDE` в `white_vesc.py`).
 - Скрипт автоматически попробует `rfcomm`, если USB-порт недоступен.
+
+### BLE-мост (если модуль только BLE UART)
+- Установите `ble-serial`: `pip install --user ble-serial`.
+- Запустите мост: `./start_ble_bridge.sh` (создаёт `/tmp/vesc-ble`).
+- Основной скрипт уже использует этот путь по умолчанию (`VESC_PORT_OVERRIDE`).

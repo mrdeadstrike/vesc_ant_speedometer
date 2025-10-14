@@ -36,7 +36,7 @@ SLAVE_CAN_ID = 15
 CELL_COUNT = 20
 
 # Укажи порт вручную, если нужно (например "/dev/rfcomm0")
-VESC_PORT_OVERRIDE = "/dev/rfcomm0"
+VESC_PORT_OVERRIDE = "/tmp/vesc-ble"
 DEFAULT_VESC_SERIAL_TIMEOUT = 0.5
 
 GREEN_COLOR = (0, 160, 0)
@@ -1197,6 +1197,8 @@ def read_сontrollers(
           break
         except Exception as e:
           print(f"Не удалось открыть порт {candidate}: {e}", flush=True)
+          if candidate == VESC_PORT_OVERRIDE:
+            print("Проверь запущен ли BLE-мост (./start_ble_bridge.sh) и присутствует ли /tmp/vesc-ble", flush=True)
           ser = None
       if ser is None:
         print("Порты не открылись, повтор через 2 секунды", flush=True)
