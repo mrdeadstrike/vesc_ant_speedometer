@@ -1027,6 +1027,14 @@ def read_serial(ser):
     #GET_INFO
     ser.write(packet_master)
     header = ser.read(2)
+    if not header:
+      process_pending_vesc_commands(ser)
+      time.sleep(0.1)
+      continue
+    if header[0] != 2:
+      ser.reset_input_buffer()
+      time.sleep(0.1)
+      continue
     controllerAnswerError = True
     if header and header[0] == 2:
       size = header[1]
@@ -1073,6 +1081,14 @@ def read_serial(ser):
     controllerAnswerError = True
     ser.write(packet)
     header = ser.read(2)
+    if not header:
+      process_pending_vesc_commands(ser)
+      time.sleep(0.1)
+      continue
+    if header[0] != 2:
+      ser.reset_input_buffer()
+      time.sleep(0.1)
+      continue
     if header and header[0] == 2:
       size = header[1]
       frame = ser.read(size + 3)
