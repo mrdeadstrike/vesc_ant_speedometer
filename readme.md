@@ -23,3 +23,7 @@ chmod +x ~/Desktop/MyScript.desktop
 - Установите `ble-serial`: `pip install --user ble-serial`.
 - Запустите мост: `./start_ble_bridge.sh` (создаёт `/tmp/vesc-ble`, запускает `ble-serial -d F5:00:47:10:37:D2 -p /tmp/vesc-ble`).
 - Основной скрипт уже использует этот путь по умолчанию (`VESC_PORT_OVERRIDE`).
+
+### Общий запуск
+- Выполните `./run.sh`: скрипт стартует BLE-мост (если доступен) и затем запускает `white_vesc.py`.
+- Выход из Python-приложения автоматически завершает BLE-мост.

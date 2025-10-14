@@ -14,7 +14,6 @@ import glob
 import urllib
 import platform
 import os
-import atexit
 
 
 PACKET_INDEX_FOR_VESC = 47#4
@@ -80,8 +79,6 @@ EXTERNAL_TEMP_KEYS = [
   'external_temp_2',
   'external_temp_3',
 ]
-
-BLE_BRIDGE_PROCESS = None
 
 IS_RASPBERY = False
 IS_MAC = False
@@ -542,46 +539,6 @@ def fold_mirrors_on_exit():
     mirror_fold_done = True
   except Exception as exc:
     print(f"Не удалось сложить зеркала при выходе: {exc}")
-  stop_ble_bridge()
-
-
-def stop_ble_bridge():
-  global BLE_BRIDGE_PROCESS
-  if BLE_BRIDGE_PROCESS and BLE_BRIDGE_PROCESS.poll() is None:
-    try:
-      BLE_BRIDGE_PROCESS.terminate()
-      BLE_BRIDGE_PROCESS.wait(timeout=2)
-    except Exception:
-      pass
-  BLE_BRIDGE_PROCESS = None
-  if VESC_PORT_OVERRIDE == "/tmp/vesc-ble" and os.path.exists(VESC_PORT_OVERRIDE):
-    try:
-      os.remove(VESC_PORT_OVERRIDE)
-    except OSError:
-      pass
-
-
-def ensure_ble_bridge():
-  global BLE_BRIDGE_PROCESS
-  if VESC_PORT_OVERRIDE != "/tmp/vesc-ble":
-    return
-  if BLE_BRIDGE_PROCESS and BLE_BRIDGE_PROCESS.poll() is None:
-    return
-  if not os.path.exists("start_ble_bridge.sh"):
-    return
-  try:
-    BLE_BRIDGE_PROCESS = subprocess.Popen(
-      ["bash", "start_ble_bridge.sh"],
-      stdout=subprocess.DEVNULL,
-      stderr=subprocess.DEVNULL
-    )
-    print("Запущен BLE-мост start_ble_bridge.sh", flush=True)
-  except Exception as exc:
-    BLE_BRIDGE_PROCESS = None
-    print(f"Не удалось запустить BLE-мост: {exc}", flush=True)
-
-
-atexit.register(stop_ble_bridge)
 
 eco_mode = False
 current_speed_limit_kmh = None
@@ -1223,7 +1180,6 @@ def read_сontrollers(
                 baudrate=115200):
   if IS_RASPBERY or not IS_MAC:
     while True:
-      ensure_ble_bridge()
       ser = None
       current_port = None
       for candidate in iter_vesc_port_candidates(port_name):
@@ -1260,8 +1216,6 @@ def read_сontrollers(
         except Exception:
           ser = None
       time.sleep(2)
-
-ensure_ble_bridge()
 
 threading.Thread(target=read_сontrollers, kwargs={"port_name": VESC_PORT_OVERRIDE}, daemon=True).start()
 
