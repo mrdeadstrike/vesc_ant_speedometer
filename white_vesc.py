@@ -10,6 +10,7 @@ import struct
 import math
 import time
 
+import glob
 import urllib
 
 
@@ -33,6 +34,9 @@ LOCK_KEYPAD_LAYOUT = [
 SLAVE_CAN_ID = 15
 
 CELL_COUNT = 20
+
+# Укажи порт вручную, если нужно (например "/dev/rfcomm0")
+VESC_PORT_OVERRIDE = "/dev/rfcomm0"
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -1096,38 +1100,70 @@ def read_serial(ser):
     time.sleep(0.1)#0.05
 
 
+def iter_vesc_port_candidates(explicit_port=None):
+  seen = set()
+  if explicit_port:
+    yield explicit_port
+    seen.add(explicit_port)
+
+  if VESC_PORT_OVERRIDE and VESC_PORT_OVERRIDE not in seen:
+    yield VESC_PORT_OVERRIDE
+    seen.add(VESC_PORT_OVERRIDE)
+
+  env_port = os.environ.get("VESC_SERIAL_PORT")
+  if env_port and env_port not in seen:
+    yield env_port
+    seen.add(env_port)
+
+  patterns = []
+  if IS_MAC:
+    patterns.extend(['/dev/tty.usbmodem*', '/dev/tty.*Bluetooth*'])
+  else:
+    patterns.extend(['/dev/rfcomm*', '/dev/ttyACM*'])
+
+  for pattern in patterns:
+    for candidate in sorted(glob.glob(pattern)):
+      if candidate not in seen:
+        yield candidate
+        seen.add(candidate)
+
+  fallback = '/dev/tty.usbmodem3041' if IS_MAC else '/dev/ttyACM0'
+  if fallback not in seen:
+    yield fallback
+
+
 def read_сontrollers(
-                #port_name='/dev/tty.usbmodem3041', #MAC
-                port_name='/dev/ttyACM0', #Raspbery PI
+                port_name=None,
                 baudrate=115200):
   if IS_RASPBERY or not IS_MAC:
     while True:
-      try:
-        ser = serial.Serial(port_name, baudrate, timeout=0.1)
-      except Exception as e:
+      ser = None
+      current_port = None
+      for candidate in iter_vesc_port_candidates(port_name):
         try:
-          ser.close()
-          #add_speak_message("Отладка БМС 1")
-        except:
-          #add_speak_message("Отладка БМС 2")
+          ser = serial.Serial(candidate, baudrate, timeout=0.1)
+          current_port = candidate
+          print(f"VESC port open: {candidate}")
+          break
+        except Exception as e:
+          print(f"Не удалось открыть порт {candidate}: {e}")
           ser = None
-        print("Не удалось открыть порт:", e)
+      if ser is None:
         time.sleep(2)
         continue
 
       try:
         read_serial(ser)
-      except:
+      except Exception as exc:
+        print(f"Ошибка чтения VESC ({current_port}): {exc}")
+      finally:
         try:
           ser.close()
-          #add_speak_message("Ошибка БМС 1")
-        except:
+        except Exception:
           ser = None
-          #add_speak_message("Ошибка БМС 2")
-        time.sleep(2)
       time.sleep(2)
 
-threading.Thread(target=read_сontrollers, daemon=True).start()
+threading.Thread(target=read_сontrollers, kwargs={"port_name": VESC_PORT_OVERRIDE}, daemon=True).start()
 
 ######### BMS READ ############
 def parse_temperatures(data):

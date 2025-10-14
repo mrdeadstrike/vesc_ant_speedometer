@@ -13,3 +13,8 @@ Categories=Utility;
 
 
 chmod +x ~/Desktop/MyScript.desktop
+
+### Подключение VESC по Bluetooth
+- После привязки VESC через `bluetoothctl` убедитесь, что появилось устройство `/dev/rfcommX` (`ls /dev/rfcomm*`).
+- Укажите порт (переменная окружения `VESC_SERIAL_PORT=/dev/rfcomm0` или измените `VESC_PORT_OVERRIDE` в `white_vesc.py`).
+- Скрипт автоматически попробует `rfcomm`, если USB-порт недоступен.
