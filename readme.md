@@ -21,5 +21,5 @@ chmod +x ~/Desktop/MyScript.desktop
 
 ### BLE-мост (если модуль только BLE UART)
 - Установите `ble-serial`: `pip install --user ble-serial`.
-- Запустите мост: `./start_ble_bridge.sh --baudrate 115200` (создаёт `/tmp/vesc-ble`).
+- Запустите мост: `./start_ble_bridge.sh` (создаёт `/tmp/vesc-ble`, подключается к `F5:00:47:10:37:D2` на скорости 115200 бод).
 - Основной скрипт уже использует этот путь по умолчанию (`VESC_PORT_OVERRIDE`).
