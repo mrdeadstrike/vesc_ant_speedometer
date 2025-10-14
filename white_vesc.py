@@ -899,7 +899,9 @@ def process_pending_vesc_commands(ser):
   try:
     while True:
       packet = vesc_command_queue.get_nowait()
+      print(f"Очередь VESC: отправляем пакет {packet.hex()}", flush=True)
       ser.write(packet)
+      ser.flush()
   except queue.Empty:
     pass
 
@@ -1023,20 +1025,28 @@ def read_serial(ser):
   packet_slave = pack_comm_get_values(can_id=15)
 
   requeue_current_speed_limit()
+  ser.reset_input_buffer()
+  ser.reset_output_buffer()
+  print("Буферы VESC очищены, начинаем цикл чтения", flush=True)
 
   while True:
     #GET_INFO
-    print(f"VESC master: отправляем {len(packet_master)} байт -> {packet_master.hex()}")
+    print(f"VESC master: отправляем {len(packet_master)} байт -> {packet_master.hex()}", flush=True)
     ser.write(packet_master)
     ser.flush()
+    print(f"VESC master: после отправки in_waiting={ser.in_waiting}", flush=True)
     header = ser.read(2)
     if not header:
-      print(f"VESC master: пустой ответ (timeout), in_waiting={ser.in_waiting}")
+      print(f"VESC master: пустой ответ (timeout), in_waiting={ser.in_waiting}", flush=True)
+      if ser.in_waiting:
+        leftover = ser.read(ser.in_waiting)
+        if leftover:
+          print(f"VESC master: неожиданные данные {leftover.hex()}", flush=True)
       process_pending_vesc_commands(ser)
       time.sleep(0.1)
       continue
     if header[0] != 2:
-      print(f"VESC master: неожиданный заголовок {header!r}, in_waiting={ser.in_waiting}")
+      print(f"VESC master: неожиданный заголовок {header!r}, in_waiting={ser.in_waiting}", flush=True)
       ser.reset_input_buffer()
       time.sleep(0.1)
       continue
@@ -1084,17 +1094,22 @@ def read_serial(ser):
     #response = ser.read(1024)
     #print(response)
     controllerAnswerError = True
-    print(f"VESC slave: отправляем {len(packet)} байт -> {packet.hex()}")
+    print(f"VESC slave: отправляем {len(packet)} байт -> {packet.hex()}", flush=True)
     ser.write(packet)
     ser.flush()
+    print(f"VESC slave: после отправки in_waiting={ser.in_waiting}", flush=True)
     header = ser.read(2)
     if not header:
-      print(f"VESC slave: пустой ответ (timeout), in_waiting={ser.in_waiting}")
+      print(f"VESC slave: пустой ответ (timeout), in_waiting={ser.in_waiting}", flush=True)
+      if ser.in_waiting:
+        leftover = ser.read(ser.in_waiting)
+        if leftover:
+          print(f"VESC slave: неожиданные данные {leftover.hex()}", flush=True)
       process_pending_vesc_commands(ser)
       time.sleep(0.1)
       continue
     if header[0] != 2:
-      print(f"VESC slave: неожиданный заголовок {header!r}, in_waiting={ser.in_waiting}")
+      print(f"VESC slave: неожиданный заголовок {header!r}, in_waiting={ser.in_waiting}", flush=True)
       ser.reset_input_buffer()
       time.sleep(0.1)
       continue
@@ -1128,18 +1143,18 @@ def read_serial(ser):
 def iter_vesc_port_candidates(explicit_port=None):
   seen = set()
   if explicit_port:
-    print(f"Используем порт из параметров: {explicit_port}")
+    print(f"Используем порт из параметров: {explicit_port}", flush=True)
     yield explicit_port
     seen.add(explicit_port)
 
   if VESC_PORT_OVERRIDE and VESC_PORT_OVERRIDE not in seen:
-    print(f"Используем VESC_PORT_OVERRIDE: {VESC_PORT_OVERRIDE}")
+    print(f"Используем VESC_PORT_OVERRIDE: {VESC_PORT_OVERRIDE}", flush=True)
     yield VESC_PORT_OVERRIDE
     seen.add(VESC_PORT_OVERRIDE)
 
   env_port = os.environ.get("VESC_SERIAL_PORT")
   if env_port and env_port not in seen:
-    print(f"Используем порт из окружения VESC_SERIAL_PORT={env_port}")
+    print(f"Используем порт из окружения VESC_SERIAL_PORT={env_port}", flush=True)
     yield env_port
     seen.add(env_port)
 
@@ -1152,7 +1167,7 @@ def iter_vesc_port_candidates(explicit_port=None):
   for pattern in patterns:
     for candidate in sorted(glob.glob(pattern)):
       if candidate not in seen:
-        print(f"Найден кандидат порта {candidate} по шаблону {pattern}")
+        print(f"Найден кандидат порта {candidate} по шаблону {pattern}", flush=True)
         yield candidate
         seen.add(candidate)
 
@@ -1169,7 +1184,7 @@ def read_сontrollers(
       ser = None
       current_port = None
       for candidate in iter_vesc_port_candidates(port_name):
-        print(f"Пытаемся открыть порт {candidate}")
+        print(f"Пытаемся открыть порт {candidate}", flush=True)
         try:
           ser = serial.Serial(
             candidate,
@@ -1178,20 +1193,22 @@ def read_сontrollers(
             write_timeout=DEFAULT_VESC_SERIAL_TIMEOUT
           )
           current_port = candidate
-          print(f"VESC port open: {candidate}")
+          print(f"VESC port open: {candidate}", flush=True)
           break
         except Exception as e:
-          print(f"Не удалось открыть порт {candidate}: {e}")
+          print(f"Не удалось открыть порт {candidate}: {e}", flush=True)
           ser = None
       if ser is None:
-        print("Порты не открылись, повтор через 2 секунды")
+        print("Порты не открылись, повтор через 2 секунды", flush=True)
         time.sleep(2)
         continue
 
       try:
+        print("Пауза после открытия порта 0.5 c", flush=True)
+        time.sleep(0.5)
         read_serial(ser)
       except Exception as exc:
-        print(f"Ошибка чтения VESC ({current_port}): {exc}")
+        print(f"Ошибка чтения VESC ({current_port}): {exc}", flush=True)
       finally:
         try:
           ser.close()
