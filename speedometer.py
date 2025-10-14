@@ -1339,11 +1339,17 @@ def read_bms(
       ser = None
       current_port = None
       for candidate in iter_bms_port_candidates(port_name):
-        try:
-          ser = serial.Serial(candidate, baudrate, timeout=0.1)
-          current_port = candidate
-          print(f"BMS port open: {candidate}")
-          BMS_LOST = False
+       try:
+         ser = serial.Serial(candidate, baudrate, timeout=0.1)
+         current_port = candidate
+         print(f"BMS port open: {candidate}")
+         BMS_LOST = False
+          time.sleep(0.5)
+          try:
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+          except Exception:
+            pass
           break
         except Exception as e:
           print(f"Не удалось открыть BMS порт {candidate}: {e}")

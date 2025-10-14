@@ -11,9 +11,33 @@ if [ ! -x "${BLE_SERIAL_BIN}" ]; then
   exit 1
 fi
 
-echo "Запускаю BLE-мост для VESC (${BLE_DEVICE_MAC}) на ${BLE_VIRTUAL_PORT}"
-if [ -e "${BLE_VIRTUAL_PORT}" ]; then
-  echo "Удаляю существующий порт ${BLE_VIRTUAL_PORT}"
-  rm -f "${BLE_VIRTUAL_PORT}"
-fi
-exec "${BLE_SERIAL_BIN}" -d "${BLE_DEVICE_MAC}" -p "${BLE_VIRTUAL_PORT}"
+stop_requested=0
+ble_pid=""
+
+cleanup() {
+  stop_requested=1
+  if [ -n "${ble_pid}" ]; then
+    kill "${ble_pid}" 2>/dev/null || true
+  fi
+}
+
+trap cleanup INT TERM
+
+while true; do
+  echo "Запускаю BLE-мост для VESC (${BLE_DEVICE_MAC}) на ${BLE_VIRTUAL_PORT}"
+  if [ -e "${BLE_VIRTUAL_PORT}" ]; then
+    echo "Удаляю существующий порт ${BLE_VIRTUAL_PORT}"
+    rm -f "${BLE_VIRTUAL_PORT}"
+  fi
+  set +e
+  "${BLE_SERIAL_BIN}" -d "${BLE_DEVICE_MAC}" -p "${BLE_VIRTUAL_PORT}" &
+  ble_pid=$!
+  wait "${ble_pid}"
+  exit_code=$?
+  set -e
+  if [ "${stop_requested}" -eq 1 ]; then
+    break
+  fi
+  echo "BLE-мост VESC отключён (код ${exit_code}), переподключаем через 2 секунды..."
+  sleep 2
+done
