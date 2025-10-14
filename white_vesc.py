@@ -37,6 +37,7 @@ CELL_COUNT = 20
 
 # Укажи порт вручную, если нужно (например "/dev/rfcomm0")
 VESC_PORT_OVERRIDE = "/dev/rfcomm0"
+DEFAULT_VESC_SERIAL_TIMEOUT = 0.5
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -1025,15 +1026,17 @@ def read_serial(ser):
 
   while True:
     #GET_INFO
+    print(f"VESC master: отправляем {len(packet_master)} байт -> {packet_master.hex()}")
     ser.write(packet_master)
+    ser.flush()
     header = ser.read(2)
     if not header:
-      print("VESC master: пустой ответ (timeout)")
+      print(f"VESC master: пустой ответ (timeout), in_waiting={ser.in_waiting}")
       process_pending_vesc_commands(ser)
       time.sleep(0.1)
       continue
     if header[0] != 2:
-      print(f"VESC master: неожиданный заголовок {header!r}")
+      print(f"VESC master: неожиданный заголовок {header!r}, in_waiting={ser.in_waiting}")
       ser.reset_input_buffer()
       time.sleep(0.1)
       continue
@@ -1081,15 +1084,17 @@ def read_serial(ser):
     #response = ser.read(1024)
     #print(response)
     controllerAnswerError = True
+    print(f"VESC slave: отправляем {len(packet)} байт -> {packet.hex()}")
     ser.write(packet)
+    ser.flush()
     header = ser.read(2)
     if not header:
-      print("VESC slave: пустой ответ (timeout)")
+      print(f"VESC slave: пустой ответ (timeout), in_waiting={ser.in_waiting}")
       process_pending_vesc_commands(ser)
       time.sleep(0.1)
       continue
     if header[0] != 2:
-      print(f"VESC slave: неожиданный заголовок {header!r}")
+      print(f"VESC slave: неожиданный заголовок {header!r}, in_waiting={ser.in_waiting}")
       ser.reset_input_buffer()
       time.sleep(0.1)
       continue
@@ -1166,7 +1171,12 @@ def read_сontrollers(
       for candidate in iter_vesc_port_candidates(port_name):
         print(f"Пытаемся открыть порт {candidate}")
         try:
-          ser = serial.Serial(candidate, baudrate, timeout=0.1)
+          ser = serial.Serial(
+            candidate,
+            baudrate,
+            timeout=DEFAULT_VESC_SERIAL_TIMEOUT,
+            write_timeout=DEFAULT_VESC_SERIAL_TIMEOUT
+          )
           current_port = candidate
           print(f"VESC port open: {candidate}")
           break
