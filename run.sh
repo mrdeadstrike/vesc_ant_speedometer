@@ -35,17 +35,17 @@ else
   echo "Внимание: ${BLE_VESC_SCRIPT} не найден или не исполняемый. Пропускаю запуск BLE-моста VESC." >&2
 fi
 
-sleep 3
-
-if [[ -x "${BLE_BMS_SCRIPT}" ]]; then
-  echo "Запуск BLE-моста BMS..."
-  "${BLE_BMS_SCRIPT}" &
-  bridge_pid_bms=$!
-else
-  echo "Внимание: ${BLE_BMS_SCRIPT} не найден или не исполняемый. Пропускаю запуск BLE-моста BMS." >&2
-fi
-
-sleep 3
+# sleep 3
+#
+# if [[ -x "${BLE_BMS_SCRIPT}" ]]; then
+#   echo "Запуск BLE-моста BMS..."
+#   "${BLE_BMS_SCRIPT}" &
+#   bridge_pid_bms=$!
+# else
+#   echo "Внимание: ${BLE_BMS_SCRIPT} не найден или не исполняемый. Пропускаю запуск BLE-моста BMS." >&2
+# fi
+#
+# sleep 3
 
 echo "Запуск основного приложения..."
 python3 "${PYTHON_SCRIPT}"
