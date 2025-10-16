@@ -11,7 +11,6 @@ BLE_NOTIFY_CHARACTERISTIC="${BLE_NOTIFY_CHARACTERISTIC:-${BLE_SERIAL_NOTIFY_CHAR
 BLE_WRITE_CHARACTERISTIC="${BLE_WRITE_CHARACTERISTIC:-${BLE_SERIAL_WRITE_CHARACTERISTIC:-}}"
 BLE_WRITE_WITHOUT_RESPONSE_CHARACTERISTIC="${BLE_WRITE_WITHOUT_RESPONSE_CHARACTERISTIC:-${BLE_SERIAL_WRITE_WITHOUT_RESPONSE_CHARACTERISTIC:-}}"
 BLE_ADAPTER="${BLE_ADAPTER:-}"
-BLE_PASSKEY="${BLE_PASSKEY:-${BLE_SERIAL_PASSKEY:-12345678}}"
 
 if [ ! -x "${BLE_SERIAL_BIN}" ]; then
   echo "ble-serial не найден. Установи его: pip install --user ble-serial" >&2
@@ -64,9 +63,7 @@ while true; do
     args+=("--write-without-response-characteristic" "${BLE_WRITE_WITHOUT_RESPONSE_CHARACTERISTIC}")
   fi
 
-  if [ -n "${BLE_PASSKEY}" ]; then
-    args+=("--passkey" "${BLE_PASSKEY}")
-  fi
+  # passkey для ble-serial не передаём: некоторые версии не поддерживают аргумент
 
   if [ -n "${BLE_ADAPTER}" ]; then
     args+=("--adapter" "${BLE_ADAPTER}")
