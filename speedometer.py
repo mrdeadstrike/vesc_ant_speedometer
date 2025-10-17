@@ -783,6 +783,7 @@ def queue_speed_limit_erpm(target_erpm, display_speed_kmh, force=False, reason=N
   current_speed_limit_erpm = target_erpm
   log_reason = f" ({reason})" if reason else ""
   print(f"➡️  VESC speed limit -> ERPM {target_erpm}, отображаем {display_speed_kmh} км/ч{log_reason}", flush=True)
+  print(f"    (force={force}, eco_mode={eco_mode}, lock_active={lock_active})", flush=True)
 
 def queue_speed_limit_command(max_speed_kmh, force=False):
   if max_speed_kmh is None:
@@ -918,8 +919,7 @@ def set_eco_mode(enabled):
     return
 
   if enabled:
-    queue_speed_limit_erpm(
-      ECO_SPEED_LIMIT_ERPM,
+    queue_speed_limit_command(
       ECO_SPEED_LIMIT_KMH,
       force=True,
       reason="eco ON"
