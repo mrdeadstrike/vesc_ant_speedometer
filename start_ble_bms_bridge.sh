@@ -7,6 +7,7 @@ BLE_VIRTUAL_PORT="/tmp/bms-ble"
 
 BLE_SERIAL_BIN="${BLE_SERIAL_BIN:-$(command -v ble-serial || echo "$HOME/.local/bin/ble-serial")}"
 
+BLE_SERVICE_UUID="${BLE_SERVICE_UUID:-${BLE_SERIAL_SERVICE_UUID:-0000ffe0-0000-1000-8000-00805f9b34fb}}"
 BLE_NOTIFY_CHARACTERISTIC="${BLE_NOTIFY_CHARACTERISTIC:-${BLE_SERIAL_NOTIFY_CHARACTERISTIC:-0000fff4-0000-1000-8000-00805f9b34fb}}"
 BLE_WRITE_CHARACTERISTIC="${BLE_WRITE_CHARACTERISTIC:-${BLE_SERIAL_WRITE_CHARACTERISTIC:-0000fff2-0000-1000-8000-00805f9b34fb}}"
 BLE_WRITE_WITHOUT_RESPONSE_CHARACTERISTIC="${BLE_WRITE_WITHOUT_RESPONSE_CHARACTERISTIC:-${BLE_SERIAL_WRITE_WITHOUT_RESPONSE_CHARACTERISTIC:-0000fff3-0000-1000-8000-00805f9b34fb}}"
@@ -49,19 +50,21 @@ fi
 
 args=(-d "${BLE_DEVICE_MAC}" -p "${BLE_VIRTUAL_PORT}")
 
-if [ -n "${BLE_NOTIFY_CHARACTERISTIC}" ]; then
-  args+=("--notify-characteristic" "${BLE_NOTIFY_CHARACTERISTIC}")
+if [ -n "${BLE_SERVICE_UUID}" ]; then
+  args+=("-s" "${BLE_SERVICE_UUID}")
 fi
 
-if [ -n "${BLE_WRITE_CHARACTERISTIC}" ]; then
-  args+=("--write-characteristic" "${BLE_WRITE_CHARACTERISTIC}")
+if [ -n "${BLE_NOTIFY_CHARACTERISTIC}" ]; then
+  args+=("-r" "${BLE_NOTIFY_CHARACTERISTIC}")
 fi
 
 if [ -n "${BLE_WRITE_WITHOUT_RESPONSE_CHARACTERISTIC}" ]; then
-  args+=("--write-without-response-characteristic" "${BLE_WRITE_WITHOUT_RESPONSE_CHARACTERISTIC}")
+  args+=("-w" "${BLE_WRITE_WITHOUT_RESPONSE_CHARACTERISTIC}")
+elif [ -n "${BLE_WRITE_CHARACTERISTIC}" ]; then
+  args+=("-w" "${BLE_WRITE_CHARACTERISTIC}")
 fi
 
-# passkey для ble-serial не передаём: некоторые версии не поддерживают аргумент
+# passkey для ble-serial не передаём: версия в системе не поддерживает аргумент
 
 if [ -n "${BLE_ADAPTER}" ]; then
   args+=("--adapter" "${BLE_ADAPTER}")
