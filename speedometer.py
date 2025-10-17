@@ -771,7 +771,7 @@ def speed_kmh_to_erpm(speed_kmh):
   wheel_rpm = speed_mps / wheel_speed_per_rpm
   return wheel_rpm * pole_pairs
 
-def queue_speed_limit_erpm(target_erpm, display_speed_kmh, force=False):
+def queue_speed_limit_erpm(target_erpm, display_speed_kmh, force=False, reason=None):
   global current_speed_limit_kmh, current_speed_limit_erpm
   if target_erpm is None:
     return
@@ -781,6 +781,8 @@ def queue_speed_limit_erpm(target_erpm, display_speed_kmh, force=False):
   enqueue_vesc_command(payload)
   current_speed_limit_kmh = display_speed_kmh
   current_speed_limit_erpm = target_erpm
+  log_reason = f" ({reason})" if reason else ""
+  print(f"➡️  VESC speed limit -> ERPM {target_erpm}, отображаем {display_speed_kmh} км/ч{log_reason}", flush=True)
 
 def queue_speed_limit_command(max_speed_kmh, force=False):
   if max_speed_kmh is None:
@@ -916,10 +918,20 @@ def set_eco_mode(enabled):
     return
 
   if enabled:
-    queue_speed_limit_erpm(ECO_SPEED_LIMIT_ERPM, ECO_SPEED_LIMIT_KMH)
+    queue_speed_limit_erpm(
+      ECO_SPEED_LIMIT_ERPM,
+      ECO_SPEED_LIMIT_KMH,
+      force=True,
+      reason="eco ON"
+    )
     add_speak_message("Эко режим активирован")
   else:
-    queue_speed_limit_command(None)
+    queue_speed_limit_erpm(
+      DEFAULT_NORMAL_ERPM,
+      get_normal_speed_limit_kmh(),
+      force=True,
+      reason="eco OFF"
+    )
     add_speak_message("Нормальный режим")
 
   eco_mode = enabled
