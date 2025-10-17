@@ -799,6 +799,24 @@ def queue_speed_limit_command(max_speed_kmh, force=False, reason=None):
     reason=reason
   )
 
+def apply_speed_limit_erpm(target_erpm, reason=None):
+  if target_erpm is None:
+    return
+  if target_erpm == 0:
+    display_speed_kmh = 0.0
+  elif target_erpm == ECO_SPEED_LIMIT_ERPM:
+    display_speed_kmh = ECO_SPEED_LIMIT_KMH
+  elif target_erpm == DEFAULT_NORMAL_ERPM:
+    display_speed_kmh = get_normal_speed_limit_kmh()
+  else:
+    display_speed_kmh = get_normal_speed_limit_kmh()
+  queue_speed_limit_erpm(
+    target_erpm,
+    display_speed_kmh,
+    force=True,
+    reason=reason
+  )
+
 def get_display_power():
   power = data.get('power', 0)
   if eco_mode and power > ECO_POWER_DISPLAY_LIMIT:
@@ -816,7 +834,7 @@ def activate_lock():
     lock_restore_speed = (current_speed_limit_kmh, current_speed_limit_erpm)
   else:
     lock_restore_speed = None
-  queue_speed_limit_command(0, force=True)
+  apply_speed_limit_erpm(0.0, reason="lock ON")
   add_speak_message("Самокат заблокирован")
   lock_prev_page = PAGE_NAME
   PAGE_NAME = PAGE_LOCK
@@ -834,7 +852,7 @@ def deactivate_lock(unlocked):
   if restore_speed and restore_speed[0] is not None and restore_speed[1] is not None:
     queue_speed_limit_erpm(restore_speed[1], restore_speed[0], force=True)
   else:
-    queue_speed_limit_command(None, force=True)
+    apply_speed_limit_erpm(DEFAULT_NORMAL_ERPM, reason="lock OFF")
   if unlocked:
     add_speak_message("Самокат разблокирован")
   PAGE_NAME = lock_prev_page if lock_prev_page else "SPEEDOMETER"
@@ -924,19 +942,10 @@ def set_eco_mode(enabled):
     return
 
   if enabled:
-    queue_speed_limit_command(
-      ECO_SPEED_LIMIT_KMH,
-      force=True,
-      reason="eco ON"
-    )
+    apply_speed_limit_erpm(ECO_SPEED_LIMIT_ERPM, reason="eco ON")
     add_speak_message("Эко режим активирован")
   else:
-    queue_speed_limit_erpm(
-      DEFAULT_NORMAL_ERPM,
-      get_normal_speed_limit_kmh(),
-      force=True,
-      reason="eco OFF"
-    )
+    apply_speed_limit_erpm(DEFAULT_NORMAL_ERPM, reason="eco OFF")
     add_speak_message("Нормальный режим")
 
   eco_mode = enabled
