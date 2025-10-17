@@ -785,14 +785,19 @@ def queue_speed_limit_erpm(target_erpm, display_speed_kmh, force=False, reason=N
   print(f"➡️  VESC speed limit -> ERPM {target_erpm}, отображаем {display_speed_kmh} км/ч{log_reason}", flush=True)
   print(f"    (force={force}, eco_mode={eco_mode}, lock_active={lock_active})", flush=True)
 
-def queue_speed_limit_command(max_speed_kmh, force=False):
+def queue_speed_limit_command(max_speed_kmh, force=False, reason=None):
   if max_speed_kmh is None:
     display_speed_kmh = get_normal_speed_limit_kmh()
     target_erpm = DEFAULT_NORMAL_ERPM
   else:
     display_speed_kmh = max_speed_kmh
     target_erpm = speed_kmh_to_erpm(max_speed_kmh)
-  queue_speed_limit_erpm(target_erpm, display_speed_kmh, force=force)
+  queue_speed_limit_erpm(
+    target_erpm,
+    display_speed_kmh,
+    force=force,
+    reason=reason
+  )
 
 def get_display_power():
   power = data.get('power', 0)
