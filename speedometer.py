@@ -961,7 +961,7 @@ def set_eco_mode(enabled):
     return
 
   if enabled:
-    apply_speed_limit_erpm(ECO_SPEED_LIMIT_ERPM, reason="eco ON")
+    apply_speed_limit_erpm(0.0, reason="eco ON")
     add_speak_message("Эко режим активирован")
   else:
     apply_speed_limit_erpm(DEFAULT_NORMAL_ERPM, reason="eco OFF")
