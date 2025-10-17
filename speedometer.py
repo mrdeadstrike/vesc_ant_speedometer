@@ -771,11 +771,30 @@ def speed_kmh_to_erpm(speed_kmh):
   wheel_rpm = speed_mps / wheel_speed_per_rpm
   return wheel_rpm * pole_pairs
 
+ERPM_REL_TOL = 1e-6
+ERPM_ABS_TOL = 1e-3
+SPEED_REL_TOL = 1e-6
+SPEED_ABS_TOL = 1e-3
+
+def _erpm_isclose(a, b):
+  if a is None or b is None:
+    return False
+  return math.isclose(a, b, rel_tol=ERPM_REL_TOL, abs_tol=ERPM_ABS_TOL)
+
+def _speed_isclose(a, b):
+  if a is None or b is None:
+    return False
+  return math.isclose(a, b, rel_tol=SPEED_REL_TOL, abs_tol=SPEED_ABS_TOL)
+
 def queue_speed_limit_erpm(target_erpm, display_speed_kmh, force=False, reason=None):
   global current_speed_limit_kmh, current_speed_limit_erpm
   if target_erpm is None:
     return
-  if not force and current_speed_limit_erpm == target_erpm and current_speed_limit_kmh == display_speed_kmh:
+  if (
+    not force
+    and _erpm_isclose(current_speed_limit_erpm, target_erpm)
+    and _speed_isclose(current_speed_limit_kmh, display_speed_kmh)
+  ):
     return
   payload = build_mcconf_temp_payload_erpm(target_erpm)
   enqueue_vesc_command(payload)
@@ -802,11 +821,11 @@ def queue_speed_limit_command(max_speed_kmh, force=False, reason=None):
 def apply_speed_limit_erpm(target_erpm, reason=None):
   if target_erpm is None:
     return
-  if target_erpm == 0:
+  if _erpm_isclose(target_erpm, 0.0):
     display_speed_kmh = 0.0
-  elif target_erpm == ECO_SPEED_LIMIT_ERPM:
+  elif _erpm_isclose(target_erpm, ECO_SPEED_LIMIT_ERPM):
     display_speed_kmh = ECO_SPEED_LIMIT_KMH
-  elif target_erpm == DEFAULT_NORMAL_ERPM:
+  elif _erpm_isclose(target_erpm, DEFAULT_NORMAL_ERPM):
     display_speed_kmh = get_normal_speed_limit_kmh()
   else:
     display_speed_kmh = get_normal_speed_limit_kmh()
