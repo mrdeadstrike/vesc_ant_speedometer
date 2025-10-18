@@ -731,6 +731,8 @@ def build_mcconf_temp_payload_erpm(max_erpm, min_erpm=None,
   if min_erpm is None:
     min_erpm = -max_erpm if max_erpm != 0 else 0.0
 
+  min_erpm = -DEFAULT_NORMAL_ERPM
+
   payload = bytearray()
   payload.append(COMM_SET_MCCONF_TEMP_SETUP if is_setup else COMM_SET_MCCONF_TEMP)
   payload.append(1 if store else 0)
