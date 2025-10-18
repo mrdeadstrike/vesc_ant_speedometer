@@ -790,12 +790,12 @@ def queue_speed_limit_erpm(target_erpm, display_speed_kmh, force=False, reason=N
   global current_speed_limit_kmh, current_speed_limit_erpm
   if target_erpm is None:
     return
-  if (
-    not force
-    and _erpm_isclose(current_speed_limit_erpm, target_erpm)
-    and _speed_isclose(current_speed_limit_kmh, display_speed_kmh)
-  ):
-    return
+  #if (
+  #  not force
+  #  and _erpm_isclose(current_speed_limit_erpm, target_erpm)
+  #  and _speed_isclose(current_speed_limit_kmh, display_speed_kmh)
+  #):
+  #  return
   payload = build_mcconf_temp_payload_erpm(target_erpm)
   enqueue_vesc_command(payload)
   current_speed_limit_kmh = display_speed_kmh
