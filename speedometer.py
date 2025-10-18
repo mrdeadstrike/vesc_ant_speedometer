@@ -731,8 +731,6 @@ def build_mcconf_temp_payload_erpm(max_erpm, min_erpm=None,
   if min_erpm is None:
     min_erpm = -max_erpm if max_erpm != 0 else 0.0
 
-  min_erpm = -DEFAULT_NORMAL_ERPM
-
   payload = bytearray()
   payload.append(COMM_SET_MCCONF_TEMP_SETUP if is_setup else COMM_SET_MCCONF_TEMP)
   payload.append(1 if store else 0)
@@ -743,8 +741,8 @@ def build_mcconf_temp_payload_erpm(max_erpm, min_erpm=None,
   values = (
     1.0,             # current_min_scale
     1.0,             # current_max_scale
-    float(min_erpm),
-    float(max_erpm),
+    float(-100),
+    float(102),
     0.05,            # duty_min (default value)
     0.95,            # duty_max (default value)
     -200000.0,       # watt_min
