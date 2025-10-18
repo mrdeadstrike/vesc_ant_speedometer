@@ -969,11 +969,6 @@ def set_eco_mode(enabled):
 
   eco_mode = enabled
 
-def requeue_current_speed_limit():
-  if current_speed_limit_erpm is None or current_speed_limit_kmh is None:
-    return
-  queue_speed_limit_erpm(current_speed_limit_erpm, current_speed_limit_kmh, force=True)
-
 def parse_vesc_payload(payload, forwarded=False):
   try:
     if forwarded:
@@ -1069,7 +1064,6 @@ def read_serial(ser):
   packet_master = pack_comm_get_values()
   packet_slave = pack_comm_get_values(can_id=15)
 
-  requeue_current_speed_limit()
   ser.reset_input_buffer()
   ser.reset_output_buffer()
   print("Буферы VESC очищены, начинаем цикл чтения", flush=True)
