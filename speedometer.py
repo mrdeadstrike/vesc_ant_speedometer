@@ -742,7 +742,7 @@ def build_mcconf_temp_payload_erpm(max_erpm, min_erpm=None,
     1.0,             # current_min_scale
     1.0,             # current_max_scale
     float(-100),
-    float(102),
+    float(202),
     0.05,            # duty_min (default value)
     0.95,            # duty_max (default value)
     -200000.0,       # watt_min
