@@ -43,9 +43,13 @@ int foldedRightAngle = FOLDED_RIGHT_ANGLE;
 int unfoldedLeftAngle = UNFOLDED_LEFT_ANGLE;
 int unfoldedRightAngle = UNFOLDED_RIGHT_ANGLE;
 bool foldButtonPrevState = false;
+bool mirrorsFolded = false;
 
 bool prevClientConnected = false;
 String btInputBuffer;
+
+bool isNearAngle(int value, int target);
+void updateFoldedState();
 
 // --- Helpers ----------------------------------------------------------------
 int clampAngle(int value) {
@@ -96,12 +100,14 @@ void setLeftAngle(int angle) {
   currentLeftAngle = clampAngle(angle);
   leftServo.writeMicroseconds(angleToPulse(currentLeftAngle));
   sendAngle('L', currentLeftAngle);
+  updateFoldedState();
 }
 
 void setRightAngle(int angle) {
   currentRightAngle = clampAngle(angle);
   rightServo.writeMicroseconds(angleToPulse(currentRightAngle));
   sendAngle('R', currentRightAngle);
+  updateFoldedState();
 }
 
 void setAngles(int leftAngle, int rightAngle) {
@@ -111,6 +117,7 @@ void setAngles(int leftAngle, int rightAngle) {
   rightServo.writeMicroseconds(angleToPulse(currentRightAngle));
   sendAngle('L', currentLeftAngle);
   sendAngle('R', currentRightAngle);
+  updateFoldedState();
 }
 
 void sendHello() {
@@ -132,6 +139,21 @@ void sendPoseState(const String &name, int left, int right) {
   SerialBT.print(left);
   SerialBT.print(' ');
   SerialBT.println(right);
+}
+
+bool isNearAngle(int value, int target) {
+  const int tolerance = 2;
+  return abs(value - target) <= tolerance;
+}
+
+void updateFoldedState() {
+  if (isNearAngle(currentLeftAngle, foldedLeftAngle) &&
+      isNearAngle(currentRightAngle, foldedRightAngle)) {
+    mirrorsFolded = true;
+  } else if (isNearAngle(currentLeftAngle, unfoldedLeftAngle) &&
+             isNearAngle(currentRightAngle, unfoldedRightAngle)) {
+    mirrorsFolded = false;
+  }
 }
 
 void handleSetCommand(const String &payload) {
@@ -275,6 +297,7 @@ void processCommand(const String &line) {
       return;
     }
 
+    updateFoldedState();
     sendPoseState(poseName, clampedLeft, clampedRight);
   } else {
     SerialBT.println("ERR UNKNOWN");
@@ -306,6 +329,7 @@ void setup() {
 
   setAngles(DEFAULT_LEFT_ANGLE, DEFAULT_RIGHT_ANGLE);
   foldButtonPrevState = digitalRead(FOLD_BUTTON_PIN) == (FOLD_BUTTON_ACTIVE_LOW ? LOW : HIGH);
+  updateFoldedState();
 }
 
 void loop() {
@@ -337,12 +361,14 @@ void loop() {
   }
 
   bool foldButtonPressed = digitalRead(FOLD_BUTTON_PIN) == (FOLD_BUTTON_ACTIVE_LOW ? LOW : HIGH);
-  if (foldButtonPressed != foldButtonPrevState) {
-    if (foldButtonPressed) {
+  if (foldButtonPressed && !foldButtonPrevState) {
+    bool targetFolded = !mirrorsFolded;
+    if (targetFolded) {
       setAngles(foldedLeftAngle, foldedRightAngle);
     } else {
       setAngles(unfoldedLeftAngle, unfoldedRightAngle);
     }
+    mirrorsFolded = targetFolded;
   }
   foldButtonPrevState = foldButtonPressed;
 
