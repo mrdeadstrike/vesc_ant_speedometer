@@ -274,6 +274,7 @@ class MirrorController:
     self.channel = channel
     self.min_angle = min_angle
     self.max_angle = max_angle
+    self._pose_tolerance = 2
 
     self._lock = threading.Lock()
     self._target = {
@@ -412,6 +413,26 @@ class MirrorController:
       f"POSE {pose_name.upper()} {int(left)} {int(right)}"
     )
 
+  def _pose_matches(self, pose_name):
+    pose = self._poses.get(pose_name)
+    if not pose:
+      return False
+    with self._lock:
+      left_target = self._target['left']
+      right_target = self._target['right']
+    return (
+      pose.get('left') is not None and
+      pose.get('right') is not None and
+      abs(left_target - pose['left']) <= self._pose_tolerance and
+      abs(right_target - pose['right']) <= self._pose_tolerance
+    )
+
+  def toggle_pose(self):
+    if self._pose_matches('folded'):
+      self.apply_pose('unfolded')
+    else:
+      self.apply_pose('folded')
+
   def _worker_loop(self):
     while self._should_run:
       if not BLUETOOTH_SUPPORTED:
@@ -534,6 +555,10 @@ class MirrorController:
           }
           self._state[pose_name] = dict(self._poses[pose_name])
         save_mirror_state(self._state)
+    elif cmd == "BUTTON" and len(parts) >= 2:
+      event = parts[1].lower()
+      if event == "toggle":
+        self.toggle_pose()
     elif cmd == "ERR":
       with self._lock:
         self._status = f"Ошибка: {' '.join(parts[1:])}"
