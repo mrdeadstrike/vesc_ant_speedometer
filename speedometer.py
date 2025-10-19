@@ -383,6 +383,7 @@ class MirrorController:
         'right': self._poses[pose_name]['right']
       }
     save_mirror_state(self._state)
+    self._sync_pose(pose_name)
 
   def _encode_side(self, side):
     return 'L' if side == 'left' else 'R'
@@ -398,6 +399,18 @@ class MirrorController:
     if not line:
       return
     self._command_queue.put(line)
+
+  def _sync_pose(self, pose_name):
+    pose = self._poses.get(pose_name)
+    if not pose:
+      return
+    left = pose.get('left')
+    right = pose.get('right')
+    if left is None or right is None:
+      return
+    self._enqueue_command(
+      f"POSE {pose_name.upper()} {int(left)} {int(right)}"
+    )
 
   def _worker_loop(self):
     while self._should_run:
@@ -438,6 +451,8 @@ class MirrorController:
       self._status = "Подключено"
 
   def _send_initial_sync(self):
+    for pose_name in ('folded', 'unfolded'):
+      self._sync_pose(pose_name)
     for side in ('left', 'right'):
       with self._lock:
         target = self._target[side]
@@ -504,6 +519,21 @@ class MirrorController:
         self._actual['left'] = self._clamp(left)
         self._actual['right'] = self._clamp(right)
         self._status = "Подключено"
+    elif cmd == "POSE" and len(parts) >= 4:
+      pose_name = parts[1].lower()
+      try:
+        left = int(float(parts[2]))
+        right = int(float(parts[3]))
+      except ValueError:
+        return
+      if pose_name in self._poses:
+        with self._lock:
+          self._poses[pose_name] = {
+            'left': self._clamp(left),
+            'right': self._clamp(right)
+          }
+          self._state[pose_name] = dict(self._poses[pose_name])
+        save_mirror_state(self._state)
     elif cmd == "ERR":
       with self._lock:
         self._status = f"Ошибка: {' '.join(parts[1:])}"

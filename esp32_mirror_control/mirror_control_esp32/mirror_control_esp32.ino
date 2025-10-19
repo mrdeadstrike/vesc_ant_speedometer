@@ -14,6 +14,9 @@ const char *DEVICE_NAME = "MirrorControl";
 const int LEFT_SERVO_PIN = 25;
 const int RIGHT_SERVO_PIN = 26;
 
+const int FOLD_BUTTON_PIN = 33;             // Physical fold switch input
+const bool FOLD_BUTTON_ACTIVE_LOW = true;   // Set to false if the button drives HIGH when pressed
+
 const int SERVO_MIN_US = 500;
 const int SERVO_MAX_US = 2400;
 
@@ -23,12 +26,23 @@ const int ANGLE_MAX = 270;
 const int DEFAULT_LEFT_ANGLE = 120;
 const int DEFAULT_RIGHT_ANGLE = 120;
 
+// Fine‑tune these to match your actual folded / unfolded poses
+const int FOLDED_LEFT_ANGLE = DEFAULT_LEFT_ANGLE;
+const int FOLDED_RIGHT_ANGLE = DEFAULT_RIGHT_ANGLE;
+const int UNFOLDED_LEFT_ANGLE = DEFAULT_LEFT_ANGLE;
+const int UNFOLDED_RIGHT_ANGLE = DEFAULT_RIGHT_ANGLE;
+
 // --- Internal state ---------------------------------------------------------
 Servo leftServo;
 Servo rightServo;
 
 int currentLeftAngle = DEFAULT_LEFT_ANGLE;
 int currentRightAngle = DEFAULT_RIGHT_ANGLE;
+int foldedLeftAngle = FOLDED_LEFT_ANGLE;
+int foldedRightAngle = FOLDED_RIGHT_ANGLE;
+int unfoldedLeftAngle = UNFOLDED_LEFT_ANGLE;
+int unfoldedRightAngle = UNFOLDED_RIGHT_ANGLE;
+bool foldButtonPrevState = false;
 
 bool prevClientConnected = false;
 String btInputBuffer;
@@ -109,6 +123,15 @@ void sendHello() {
 void sendCurrentState() {
   sendAngle('L', currentLeftAngle);
   sendAngle('R', currentRightAngle);
+}
+
+void sendPoseState(const String &name, int left, int right) {
+  SerialBT.print("POSE ");
+  SerialBT.print(name);
+  SerialBT.print(' ');
+  SerialBT.print(left);
+  SerialBT.print(' ');
+  SerialBT.println(right);
 }
 
 void handleSetCommand(const String &payload) {
@@ -201,6 +224,58 @@ void processCommand(const String &line) {
     } else {
       SerialBT.println("ERR BAD_SIDE");
     }
+  } else if (verb == "POSE") {
+    String trimmed = payload;
+    trimmed.trim();
+    if (trimmed.length() == 0) {
+      SerialBT.println("ERR BAD_POSE");
+      return;
+    }
+
+    int firstSpace = trimmed.indexOf(' ');
+    if (firstSpace <= 0) {
+      SerialBT.println("ERR BAD_POSE");
+      return;
+    }
+
+    String poseName = trimmed.substring(0, firstSpace);
+    String rest = trimmed.substring(firstSpace + 1);
+    rest.trim();
+
+    int secondSpace = rest.indexOf(' ');
+    if (secondSpace <= 0) {
+      SerialBT.println("ERR BAD_POSE");
+      return;
+    }
+
+    String leftToken = rest.substring(0, secondSpace);
+    String rightToken = rest.substring(secondSpace + 1);
+    leftToken.trim();
+    rightToken.trim();
+
+    int leftValue = 0;
+    int rightValue = 0;
+    if (!tryParseInt(leftToken, leftValue) || !tryParseInt(rightToken, rightValue)) {
+      SerialBT.println("ERR BAD_POSE");
+      return;
+    }
+
+    int clampedLeft = clampAngle(leftValue);
+    int clampedRight = clampAngle(rightValue);
+
+    poseName.toUpperCase();
+    if (poseName == "FOLDED") {
+      foldedLeftAngle = clampedLeft;
+      foldedRightAngle = clampedRight;
+    } else if (poseName == "UNFOLDED") {
+      unfoldedLeftAngle = clampedLeft;
+      unfoldedRightAngle = clampedRight;
+    } else {
+      SerialBT.println("ERR BAD_POSE");
+      return;
+    }
+
+    sendPoseState(poseName, clampedLeft, clampedRight);
   } else {
     SerialBT.println("ERR UNKNOWN");
   }
@@ -209,6 +284,12 @@ void processCommand(const String &line) {
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting mirror control...");
+
+  if (FOLD_BUTTON_ACTIVE_LOW) {
+    pinMode(FOLD_BUTTON_PIN, INPUT_PULLUP);
+  } else {
+    pinMode(FOLD_BUTTON_PIN, INPUT_PULLDOWN);
+  }
 
   if (!SerialBT.begin(DEVICE_NAME)) {
     Serial.println("Bluetooth init failed!");
@@ -224,6 +305,7 @@ void setup() {
   rightServo.attach(RIGHT_SERVO_PIN, SERVO_MIN_US, SERVO_MAX_US);
 
   setAngles(DEFAULT_LEFT_ANGLE, DEFAULT_RIGHT_ANGLE);
+  foldButtonPrevState = digitalRead(FOLD_BUTTON_PIN) == (FOLD_BUTTON_ACTIVE_LOW ? LOW : HIGH);
 }
 
 void loop() {
@@ -232,6 +314,8 @@ void loop() {
     Serial.println("Client connected");
     sendHello();
     sendCurrentState();
+    sendPoseState("FOLDED", foldedLeftAngle, foldedRightAngle);
+    sendPoseState("UNFOLDED", unfoldedLeftAngle, unfoldedRightAngle);
   } else if (!clientConnected && prevClientConnected) {
     Serial.println("Client disconnected");
   }
@@ -251,6 +335,16 @@ void loop() {
       }
     }
   }
+
+  bool foldButtonPressed = digitalRead(FOLD_BUTTON_PIN) == (FOLD_BUTTON_ACTIVE_LOW ? LOW : HIGH);
+  if (foldButtonPressed != foldButtonPrevState) {
+    if (foldButtonPressed) {
+      setAngles(foldedLeftAngle, foldedRightAngle);
+    } else {
+      setAngles(unfoldedLeftAngle, unfoldedRightAngle);
+    }
+  }
+  foldButtonPrevState = foldButtonPressed;
 
   delay(5);
 }

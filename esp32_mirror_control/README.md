@@ -15,6 +15,7 @@ Firmware for the mirror actuator helper that talks to the Raspberry Pi speedomet
 - Pulse range: 500–2400 µs (adjust if your servo needs a different range)
 - Allowed angle range: 60°–150°
 - Startup angle: 120° for both channels
+- Optional fold button: `GPIO33` pulled to ground while pressed (mirrors fold while held)
 
 All of these can be changed at the top of `mirror_control_esp32.ino`.
 
@@ -42,6 +43,8 @@ GET ALL          # Report both positions
 GET L            # Report left position
 PING             # Health check
 DELTA L -5       # Optional: move left by -5 degrees
+POSE FOLDED 120 120   # Update stored "folded" pose
+POSE UNFOLDED 130 130 # Update stored "unfolded" pose
 ```
 
 Responses follow the same format:
@@ -50,6 +53,7 @@ Responses follow the same format:
 HELLO 120 120    # Sent once on connect
 ANGLE L 115      # Current left position
 ANGLE R 95       # Current right position
+POSE FOLDED 120 120   # Acknowledgement with clamped pose values
 PONG             # Reply to PING
 ERR <reason>     # Error description
 ```
