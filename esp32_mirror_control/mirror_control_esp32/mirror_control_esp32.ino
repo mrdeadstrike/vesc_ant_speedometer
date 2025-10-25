@@ -14,8 +14,8 @@ const char *DEVICE_NAME = "MirrorControl";
 const int LEFT_SERVO_PIN = 25;
 const int RIGHT_SERVO_PIN = 26;
 
-const int FOLD_BUTTON_PIN = 33;             // Physical fold switch input
-const bool FOLD_BUTTON_ACTIVE_LOW = true;   // Set to false if the button drives HIGH when pressed
+const int FOLD_BUTTON_PIN = 33;           // Physical fold switch input
+const bool FOLD_BUTTON_ACTIVE_LOW = true; // Set to false if the button drives HIGH when pressed
 
 const int SERVO_MIN_US = 500;
 const int SERVO_MAX_US = 2400;
@@ -48,29 +48,38 @@ bool prevClientConnected = false;
 String btInputBuffer;
 
 // --- Helpers ----------------------------------------------------------------
-int clampAngle(int value) {
-  if (value < ANGLE_MIN) {
+int clampAngle(int value)
+{
+  if (value < ANGLE_MIN)
+  {
     return ANGLE_MIN;
   }
-  if (value > ANGLE_MAX) {
+  if (value > ANGLE_MAX)
+  {
     return ANGLE_MAX;
   }
   return value;
 }
 
-bool tryParseInt(const String &text, int &outValue) {
-  if (text.length() == 0) {
+bool tryParseInt(const String &text, int &outValue)
+{
+  if (text.length() == 0)
+  {
     return false;
   }
   int startIndex = 0;
-  if (text.charAt(0) == '-') {
+  if (text.charAt(0) == '-')
+  {
     startIndex = 1;
   }
-  if (startIndex >= text.length()) {
+  if (startIndex >= text.length())
+  {
     return false;
   }
-  for (int i = startIndex; i < text.length(); ++i) {
-    if (!isDigit(text.charAt(i))) {
+  for (int i = startIndex; i < text.length(); ++i)
+  {
+    if (!isDigit(text.charAt(i)))
+    {
       return false;
     }
   }
@@ -78,33 +87,38 @@ bool tryParseInt(const String &text, int &outValue) {
   return true;
 }
 
-int angleToPulse(int angle) {
+int angleToPulse(int angle)
+{
   float fraction = float(angle - ANGLE_MIN) / float(ANGLE_MAX - ANGLE_MIN);
   fraction = constrain(fraction, 0.0f, 1.0f);
   int pulse = SERVO_MIN_US + int(fraction * float(SERVO_MAX_US - SERVO_MIN_US));
   return pulse;
 }
 
-void sendAngle(const char side, int value) {
+void sendAngle(const char side, int value)
+{
   SerialBT.print("ANGLE ");
   SerialBT.print(side);
   SerialBT.print(' ');
   SerialBT.println(value);
 }
 
-void setLeftAngle(int angle) {
+void setLeftAngle(int angle)
+{
   currentLeftAngle = clampAngle(angle);
   leftServo.writeMicroseconds(angleToPulse(currentLeftAngle));
   sendAngle('L', currentLeftAngle);
 }
 
-void setRightAngle(int angle) {
+void setRightAngle(int angle)
+{
   currentRightAngle = clampAngle(angle);
   rightServo.writeMicroseconds(angleToPulse(currentRightAngle));
   sendAngle('R', currentRightAngle);
 }
 
-void setAngles(int leftAngle, int rightAngle) {
+void setAngles(int leftAngle, int rightAngle)
+{
   currentLeftAngle = clampAngle(leftAngle);
   currentRightAngle = clampAngle(rightAngle);
   leftServo.writeMicroseconds(angleToPulse(currentLeftAngle));
@@ -113,19 +127,22 @@ void setAngles(int leftAngle, int rightAngle) {
   sendAngle('R', currentRightAngle);
 }
 
-void sendHello() {
+void sendHello()
+{
   SerialBT.print("HELLO ");
   SerialBT.print(currentLeftAngle);
   SerialBT.print(' ');
   SerialBT.println(currentRightAngle);
 }
 
-void sendCurrentState() {
+void sendCurrentState()
+{
   sendAngle('L', currentLeftAngle);
   sendAngle('R', currentRightAngle);
 }
 
-void sendPoseState(const String &name, int left, int right) {
+void sendPoseState(const String &name, int left, int right)
+{
   SerialBT.print("POSE ");
   SerialBT.print(name);
   SerialBT.print(' ');
@@ -134,11 +151,13 @@ void sendPoseState(const String &name, int left, int right) {
   SerialBT.println(right);
 }
 
-void handleSetCommand(const String &payload) {
+void handleSetCommand(const String &payload)
+{
   String trimmed = payload;
   trimmed.trim();
   int spaceIndex = trimmed.indexOf(' ');
-  if (spaceIndex <= 0) {
+  if (spaceIndex <= 0)
+  {
     SerialBT.println("ERR BAD_SET");
     return;
   }
@@ -149,40 +168,56 @@ void handleSetCommand(const String &payload) {
   angleToken.trim();
 
   int angleValue = 0;
-  if (!tryParseInt(angleToken, angleValue)) {
+  if (!tryParseInt(angleToken, angleValue))
+  {
     SerialBT.println("ERR BAD_VALUE");
     return;
   }
 
-  if (sideToken == "L") {
+  if (sideToken == "L")
+  {
     setLeftAngle(angleValue);
-  } else if (sideToken == "R") {
+  }
+  else if (sideToken == "R")
+  {
     setRightAngle(angleValue);
-  } else {
+  }
+  else
+  {
     SerialBT.println("ERR BAD_SIDE");
   }
 }
 
-void handleGetCommand(const String &payload) {
+void handleGetCommand(const String &payload)
+{
   String trimmed = payload;
   trimmed.trim();
   trimmed.toUpperCase();
 
-  if (trimmed == "ALL") {
+  if (trimmed == "ALL")
+  {
     sendCurrentState();
-  } else if (trimmed == "L") {
+  }
+  else if (trimmed == "L")
+  {
     sendAngle('L', currentLeftAngle);
-  } else if (trimmed == "R") {
+  }
+  else if (trimmed == "R")
+  {
     sendAngle('R', currentRightAngle);
-  } else {
+  }
+  else
+  {
     SerialBT.println("ERR BAD_GET");
   }
 }
 
-void processCommand(const String &line) {
+void processCommand(const String &line)
+{
   String command = line;
   command.trim();
-  if (command.length() == 0) {
+  if (command.length() == 0)
+  {
     return;
   }
 
@@ -191,20 +226,29 @@ void processCommand(const String &line) {
   verb.toUpperCase();
 
   String payload = "";
-  if (spaceIndex != -1) {
+  if (spaceIndex != -1)
+  {
     payload = command.substring(spaceIndex + 1);
   }
 
-  if (verb == "SET") {
+  if (verb == "SET")
+  {
     handleSetCommand(payload);
-  } else if (verb == "GET") {
+  }
+  else if (verb == "GET")
+  {
     handleGetCommand(payload);
-  } else if (verb == "PING") {
+  }
+  else if (verb == "PING")
+  {
     SerialBT.println("PONG");
-  } else if (verb == "DELTA") {
+  }
+  else if (verb == "DELTA")
+  {
     payload.trim();
     int spacePos = payload.indexOf(' ');
-    if (spacePos <= 0) {
+    if (spacePos <= 0)
+    {
       SerialBT.println("ERR BAD_DELTA");
       return;
     }
@@ -213,27 +257,37 @@ void processCommand(const String &line) {
     String deltaToken = payload.substring(spacePos + 1);
     deltaToken.trim();
     int deltaValue = 0;
-    if (!tryParseInt(deltaToken, deltaValue)) {
+    if (!tryParseInt(deltaToken, deltaValue))
+    {
       SerialBT.println("ERR BAD_DELTA");
       return;
     }
-    if (sideToken == "L") {
+    if (sideToken == "L")
+    {
       setLeftAngle(currentLeftAngle + deltaValue);
-    } else if (sideToken == "R") {
+    }
+    else if (sideToken == "R")
+    {
       setRightAngle(currentRightAngle + deltaValue);
-    } else {
+    }
+    else
+    {
       SerialBT.println("ERR BAD_SIDE");
     }
-  } else if (verb == "POSE") {
+  }
+  else if (verb == "POSE")
+  {
     String trimmed = payload;
     trimmed.trim();
-    if (trimmed.length() == 0) {
+    if (trimmed.length() == 0)
+    {
       SerialBT.println("ERR BAD_POSE");
       return;
     }
 
     int firstSpace = trimmed.indexOf(' ');
-    if (firstSpace <= 0) {
+    if (firstSpace <= 0)
+    {
       SerialBT.println("ERR BAD_POSE");
       return;
     }
@@ -243,7 +297,8 @@ void processCommand(const String &line) {
     rest.trim();
 
     int secondSpace = rest.indexOf(' ');
-    if (secondSpace <= 0) {
+    if (secondSpace <= 0)
+    {
       SerialBT.println("ERR BAD_POSE");
       return;
     }
@@ -255,7 +310,8 @@ void processCommand(const String &line) {
 
     int leftValue = 0;
     int rightValue = 0;
-    if (!tryParseInt(leftToken, leftValue) || !tryParseInt(rightToken, rightValue)) {
+    if (!tryParseInt(leftToken, leftValue) || !tryParseInt(rightToken, rightValue))
+    {
       SerialBT.println("ERR BAD_POSE");
       return;
     }
@@ -264,36 +320,49 @@ void processCommand(const String &line) {
     int clampedRight = clampAngle(rightValue);
 
     poseName.toUpperCase();
-    if (poseName == "FOLDED") {
+    if (poseName == "FOLDED")
+    {
       foldedLeftAngle = clampedLeft;
       foldedRightAngle = clampedRight;
-    } else if (poseName == "UNFOLDED") {
+    }
+    else if (poseName == "UNFOLDED")
+    {
       unfoldedLeftAngle = clampedLeft;
       unfoldedRightAngle = clampedRight;
-    } else {
+    }
+    else
+    {
       SerialBT.println("ERR BAD_POSE");
       return;
     }
 
     sendPoseState(poseName, clampedLeft, clampedRight);
-  } else {
+  }
+  else
+  {
     SerialBT.println("ERR UNKNOWN");
   }
 }
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
   Serial.println("Starting mirror control...");
 
-  if (FOLD_BUTTON_ACTIVE_LOW) {
+  if (FOLD_BUTTON_ACTIVE_LOW)
+  {
     pinMode(FOLD_BUTTON_PIN, INPUT_PULLUP);
-  } else {
+  }
+  else
+  {
     pinMode(FOLD_BUTTON_PIN, INPUT_PULLDOWN);
   }
 
-  if (!SerialBT.begin(DEVICE_NAME)) {
+  if (!SerialBT.begin(DEVICE_NAME))
+  {
     Serial.println("Bluetooth init failed!");
-    while (true) {
+    while (true)
+    {
       delay(1000);
     }
   }
@@ -308,36 +377,47 @@ void setup() {
   foldButtonPrevState = digitalRead(FOLD_BUTTON_PIN) == (FOLD_BUTTON_ACTIVE_LOW ? LOW : HIGH);
 }
 
-void loop() {
+void loop()
+{
   bool clientConnected = SerialBT.hasClient();
-  if (clientConnected && !prevClientConnected) {
+  if (clientConnected && !prevClientConnected)
+  {
     Serial.println("Client connected");
     sendHello();
     sendCurrentState();
     sendPoseState("FOLDED", foldedLeftAngle, foldedRightAngle);
     sendPoseState("UNFOLDED", unfoldedLeftAngle, unfoldedRightAngle);
-  } else if (!clientConnected && prevClientConnected) {
+  }
+  else if (!clientConnected && prevClientConnected)
+  {
     Serial.println("Client disconnected");
   }
   prevClientConnected = clientConnected;
 
-  while (SerialBT.available()) {
+  while (SerialBT.available())
+  {
     char ch = static_cast<char>(SerialBT.read());
-    if (ch == '\r') {
+    if (ch == '\r')
+    {
       continue;
     }
-    if (ch == '\n') {
+    if (ch == '\n')
+    {
       processCommand(btInputBuffer);
       btInputBuffer = "";
-    } else {
-      if (btInputBuffer.length() < 120) {
+    }
+    else
+    {
+      if (btInputBuffer.length() < 120)
+      {
         btInputBuffer += ch;
       }
     }
   }
 
   bool foldButtonPressed = digitalRead(FOLD_BUTTON_PIN) == (FOLD_BUTTON_ACTIVE_LOW ? LOW : HIGH);
-  if (foldButtonPressed && !foldButtonPrevState) {
+  if (foldButtonPressed && !foldButtonPrevState)
+  {
     SerialBT.println("BUTTON TOGGLE");
   }
   foldButtonPrevState = foldButtonPressed;
