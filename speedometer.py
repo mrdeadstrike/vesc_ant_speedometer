@@ -1566,8 +1566,21 @@ def draw_progress_bar(surface, x, y, width, height, value, max_value, text, colo
     cur_val = max_value
 
   fill_width = int(width * min(cur_val / max_value, 1.0))
+  fill_color = color
+  fill_x = x
+  fill_y = y
+  fill_height = height
+  fill_radius = 10
+  if is_dark_theme() and color == (0, 0, 0):
+    vertical_inset = min(height - 4, int(height * 0.4))
+    horizontal_inset = min(width - 4, int(width * 0.1))
+    fill_y += vertical_inset // 2
+    fill_x += horizontal_inset // 2
+    fill_height = max(2, height - vertical_inset)
+    fill_width = max(2, fill_width - horizontal_inset)
+    fill_radius = max(2, fill_radius - max(1, vertical_inset // 3))
   if fill_width > 0:
-    pygame.draw.rect(surface, color, (x, y, fill_width, height), border_radius=10)
+    pygame.draw.rect(surface, fill_color, (fill_x, fill_y, fill_width, fill_height), border_radius=fill_radius)
   if text != "":
     draw_text(surface, text, font_medium, color, x + width * 0.5, y + height + 30)
 
