@@ -9,6 +9,7 @@ import serial
 import struct
 import math
 import time
+import uuid
 
 import glob
 import urllib
@@ -2368,12 +2369,11 @@ while running:
       click = pygame.mouse.get_pressed()
       if record_rect.collidepoint(mouse) and click[0] and IS_RASPBERY:
         # Старт записи
-        filename = "trip.mp4"
-        if os.path.exists(filename):
-          os.remove(filename)
+        unique_suffix = uuid.uuid4().hex[:8]
+        filename = f"trip_{unique_suffix}.mp4"
         can_start_record = False
         recorder_proc = subprocess.Popen(["wf-recorder", "-f", filename])
-        print(">>> Запись началась")
+        print(f">>> Запись началась: {filename}")
 
     # Кнопка блокировки
     btn_x += button_size + button_spacing
