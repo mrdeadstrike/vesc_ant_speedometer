@@ -49,6 +49,50 @@ ORANGE_COLOR = (230, 135, 0)
 RED_COLOR = (255, 0, 0)
 GRAY = (180, 180, 180)
 
+THEME_LIGHT = "light"
+THEME_DARK = "dark"
+THEMES = {
+  THEME_LIGHT: {
+    "background": (254, 254, 254),
+    "lock_background": (250, 250, 250),
+    "text_primary": (10, 10, 10),
+    "text_secondary": (120, 120, 120),
+  },
+  THEME_DARK: {
+    "background": (15, 15, 18),
+    "lock_background": (20, 20, 25),
+    "text_primary": (240, 240, 240),
+    "text_secondary": (180, 180, 190),
+  }
+}
+TEXT_COLOR_ROLES = {
+  (0, 0, 0): "text_primary",
+  (10, 10, 10): "text_primary",
+  (20, 20, 20): "text_primary",
+  (30, 30, 30): "text_primary",
+  (80, 80, 80): "text_secondary",
+}
+current_theme = THEME_LIGHT
+
+def get_theme_color(key, default=None):
+  theme = THEMES.get(current_theme, THEMES[THEME_LIGHT])
+  return theme.get(key, default)
+
+def themed_text_color(color):
+  if color is None or current_theme == THEME_LIGHT:
+    return color
+  role = TEXT_COLOR_ROLES.get(color)
+  if role:
+    return THEMES[current_theme].get(role, color)
+  return color
+
+def is_dark_theme():
+  return current_theme == THEME_DARK
+
+def toggle_theme():
+  global current_theme
+  current_theme = THEME_DARK if current_theme == THEME_LIGHT else THEME_LIGHT
+
 BMS_LOST = False
 
 PREV_VALS = {
@@ -601,6 +645,7 @@ eco_mode = False
 current_speed_limit_kmh = None
 current_speed_limit_erpm = None
 eco_toggle_was_pressed = False
+theme_toggle_was_pressed = False
 NORMAL_SPEED_LIMIT_KMH = None
 lock_active = False
 lock_input = ""
@@ -714,9 +759,9 @@ def speak(text, on_complete=None):
   threading.Thread(target=_run, daemon=True).start()
 
 def add_speak_message(text):
-  global MESSAGES_TO_SPEAK
-  MESSAGES_TO_SPEAK.append(text)
-  #print(MESSAGES_TO_SPEAK)
+  pass
+  #global MESSAGES_TO_SPEAK
+  #MESSAGES_TO_SPEAK.append(text)
 
 def message_voice_done():
   global message_processing
@@ -948,7 +993,7 @@ def handle_lock_digit(digit):
 
 def draw_lock_page():
   global lock_keypad_pressed
-  screen.fill((250, 250, 250))
+  screen.fill(get_theme_color("lock_background", (250, 250, 250)))
   prompt_y = HEIGHT * 0.2
   draw_text_center(screen, "Самокат заблокирован", font_medium, (30, 30, 30), prompt_y)
   draw_text_center(screen, "Введите пароль", font_small, (80, 80, 80), prompt_y + 70)
@@ -1485,10 +1530,26 @@ WIDTH, HEIGHT = 600, 1010
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('VESC ANT Speedometer')
 
-font_large = pygame.font.SysFont('Arial', 150)
-font_medium = pygame.font.SysFont('Arial', 50, True)
-font_small = pygame.font.SysFont('Arial', 40, True)
-font_tick = pygame.font.SysFont('Arial', 30, True)
+class ThemedFont:
+  def __init__(self, base_font):
+    self._font = base_font
+
+  def render(self, text, antialias, color, background=None):
+    color = themed_text_color(color)
+    background = themed_text_color(background)
+    return self._font.render(text, antialias, color, background)
+
+  def __getattr__(self, attr):
+    return getattr(self._font, attr)
+
+font_large = ThemedFont(pygame.font.SysFont('Arial', 150))
+font_medium = ThemedFont(pygame.font.SysFont('Arial', 50, True))
+font_small = ThemedFont(pygame.font.SysFont('Arial', 40, True))
+font_tick = ThemedFont(pygame.font.SysFont('Arial', 30, True))
+
+def render_force_color(font_obj, text, color, background=None):
+  base_font = font_obj._font if isinstance(font_obj, ThemedFont) else font_obj
+  return base_font.render(text, True, color, background)
 clock = pygame.time.Clock()
 
 setDebugValues = False
@@ -1819,7 +1880,7 @@ while running:
     clock.tick(30)
     continue
 
-  screen.fill((254, 254, 254))
+  screen.fill(get_theme_color("background", (254, 254, 254)))
 
   if miganie_tick > 3:
     miganie = not miganie
@@ -2386,6 +2447,27 @@ while running:
     if (not lock_active) and lock_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
       activate_lock()
 
+    # Кнопка переключения темы между зелёной и синей, но ниже
+    theme_button_radius = button_size // 2
+    lower_row_y = btn_y + button_size + (button_spacing // 2) + theme_button_radius
+    middle_x = int((record_rect.centerx + lock_rect.centerx) / 2)
+    theme_button_center = (middle_x, lower_row_y)
+    theme_button_color = (0, 0, 0) if not is_dark_theme() else (255, 255, 255)
+    theme_button_border = (200, 200, 200) if is_dark_theme() else (60, 60, 60)
+    pygame.draw.circle(screen, theme_button_color, theme_button_center, theme_button_radius)
+    pygame.draw.circle(screen, theme_button_border, theme_button_center, theme_button_radius, width=2)
+
+    mouse = pygame.mouse.get_pos()
+    click = pygame.mouse.get_pressed()
+    inside_theme_button = math.hypot(
+      mouse[0] - theme_button_center[0],
+      mouse[1] - theme_button_center[1]
+    ) <= theme_button_radius
+    theme_button_pressed = inside_theme_button and click[0] and (not block_touch or not IS_RASPBERY)
+    if theme_button_pressed and not theme_toggle_was_pressed:
+      toggle_theme()
+    theme_toggle_was_pressed = theme_button_pressed
+
     # Кнопка зеркал в верхней части экрана
     mirror_snapshot = mirror_controller.get_snapshot()
     mirror_top_width = 90
@@ -2394,13 +2476,13 @@ while running:
     mirror_top_rect = pygame.Rect(eco_rect.left - mirror_top_width - 10, 12, mirror_top_width, mirror_top_height)
     mirror_top_color = (90, 170, 255) if mirror_snapshot['connected'] else (210, 210, 210)
     pygame.draw.rect(screen, mirror_top_color, mirror_top_rect, border_radius=15)
-    mirror_top_label = font_small.render("З", True, (0, 0, 0))
+    mirror_top_label = render_force_color(font_small, "З", (0, 0, 0))
     screen.blit(mirror_top_label, mirror_top_label.get_rect(center=mirror_top_rect.center))
 
     status_text = "Э" if eco_mode else "Н"
     status_color = (200, 200, 200)
     pygame.draw.rect(screen, status_color, eco_rect, border_radius=20)
-    status_label = font_small.render(status_text, True, (0, 0, 0))
+    status_label = render_force_color(font_small, status_text, (0, 0, 0))
     screen.blit(status_label, status_label.get_rect(center=eco_rect.center))
 
     mouse = pygame.mouse.get_pos()
