@@ -10,6 +10,7 @@ import struct
 import math
 import time
 import uuid
+import traceback
 
 import glob
 import urllib
@@ -640,6 +641,58 @@ def fold_mirrors_on_exit():
     mirror_fold_done = True
   except Exception as exc:
     print(f"Не удалось сложить зеркала при выходе: {exc}")
+
+ERROR_LOG_PATH = "speedometer_errors.log"
+
+def log_exception(context: str, exc: Exception):
+  """
+  Пишем стек-трейс в консоль и файл, чтобы не искать слепую причину зависания.
+  """
+  timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+  message = f"[{timestamp}] {context}: {exc}\n{trace}"
+  print(message, flush=True)
+  try:
+    with open(ERROR_LOG_PATH, "a") as log_file:
+      log_file.write(message + "\n")
+  except Exception as log_exc:
+    print(f"Не удалось записать лог {ERROR_LOG_PATH}: {log_exc}", flush=True)
+
+def perform_exit(reason: str):
+  """
+  Унифицированное завершение приложения (и системы при полном выключении).
+  """
+  global running, can_start_record, recorder_proc
+  if not running:
+    return
+  print(f"Завершаем работу: {reason}", flush=True)
+  if not can_start_record and recorder_proc is not None:
+    try:
+      recorder_proc.send_signal(signal.SIGINT)
+      recorder_proc.wait(timeout=2)
+      print(">>> Запись остановлена")
+    except Exception as exc:
+      log_exception("Остановка записи", exc)
+    finally:
+      recorder_proc = None
+      can_start_record = True
+  try:
+    fold_mirrors_on_exit()
+  except Exception as exc:
+    log_exception("fold_mirrors_on_exit", exc)
+  time.sleep(0.4)
+  try:
+    SaveData()
+  except Exception as exc:
+    log_exception("SaveData", exc)
+  running = False
+  pygame.quit()
+  if full_off:
+    try:
+      print("OFF")
+      os.system('sudo shutdown now')
+    except Exception as exc:
+      log_exception("shutdown command", exc)
 
 eco_mode = False
 current_speed_limit_kmh = None
@@ -1847,6 +1900,7 @@ zamer_success = False
 zamer_success_prev = False
 
 can_start_record = True
+recorder_proc = None
 
 full_off = False
 
@@ -2641,103 +2695,93 @@ while running:
   #################### PAGE TRIP_STAT ###########################
   # добавить температуру моторов
   elif PAGE_NAME == "TRIP_STAT":
-    y_trip_start = 80
-    draw_text_center(screen, "Статистика поездки:", font_small, GRAY, y_trip_start)
-    y_trip_start += 60
-    y_trip_shift = 40
-    draw_text_left(screen, "Время в пути ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, data['trip_time'], font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Приехал ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, trip_end_datetime_str, font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Макс. t° моторов ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{int(data_trip['motor1_max_temp'])}° {int(data_trip['motor2_max_temp'])}°", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Расстояние ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{data['trip_odometer']:.1f} км", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Средняя скорость ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{data['trip_avg_speed']:.1f} км/ч", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Макс. скорость ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{int(data_trip['max_speed'])} км/ч", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Лучшее 0-60 ", font_small, GRAY, 10, y_trip_start - 2)
-    time_0_60 = f"{data_trip['best_time_0_60']:.2f} с"
-    if int(data_trip['best_time_0_60']) == 100:
-      time_0_60 = "-"
-    draw_text_right(screen, time_0_60, font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Макс. мощность ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{int(data_trip['max_power'])} Вт", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Потрачено заряда ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{int(data_trip['trip_start_bettery_perc'] - data['battery_level'])} %", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Макс. просадка ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{data_trip['max_voltage_down']:.1f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Слабейший ряд ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{data_trip['min_cell_v_index'] + 1}", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Мин. V в ряду ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{data_trip['min_cell_v']:.3f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
-    y_trip_start += y_trip_shift
-    draw_text_left(screen, "Макс. разбаланс ", font_small, GRAY, 10, y_trip_start - 2)
-    draw_text_right(screen, f"{data_trip['max_unit_diff']:.3f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+    try:
+      y_trip_start = 80
+      draw_text_center(screen, "Статистика поездки:", font_small, GRAY, y_trip_start)
+      y_trip_start += 60
+      y_trip_shift = 40
+      draw_text_left(screen, "Время в пути ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, data['trip_time'], font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Приехал ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, trip_end_datetime_str, font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Макс. t° моторов ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, f"{int(data_trip['motor1_max_temp'])}° {int(data_trip['motor2_max_temp'])}°", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Расстояние ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, f"{data['trip_odometer']:.1f} км", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Средняя скорость ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, f"{data['trip_avg_speed']:.1f} км/ч", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Макс. скорость ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, f"{int(data_trip['max_speed'])} км/ч", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Лучшее 0-60 ", font_small, GRAY, 10, y_trip_start - 2)
+      time_0_60 = f"{data_trip['best_time_0_60']:.2f} с"
+      if int(data_trip['best_time_0_60']) == 100:
+        time_0_60 = "-"
+      draw_text_right(screen, time_0_60, font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Макс. мощность ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, f"{int(data_trip['max_power'])} Вт", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Потрачено заряда ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, f"{int(data_trip['trip_start_bettery_perc'] - data['battery_level'])} %", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Макс. просадка ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, f"{data_trip['max_voltage_down']:.1f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Слабейший ряд ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, f"{data_trip['min_cell_v_index'] + 1}", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Мин. V в ряду ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, f"{data_trip['min_cell_v']:.3f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
+      y_trip_start += y_trip_shift
+      draw_text_left(screen, "Макс. разбаланс ", font_small, GRAY, 10, y_trip_start - 2)
+      draw_text_right(screen, f"{data_trip['max_unit_diff']:.3f}V", font_small, (0, 0, 0), WIDTH - 20, y_trip_start)
 
-    #data_trip = {
-    #  'max_speed': 0,
-    #  'max_power': 0,
-    #  'best_time_0_60': 0,
-    #  'trip_start_bettery_perc': 0,
-    #}
+      sec_to_exit = 20
 
-    sec_to_exit = 20#5
+      if timer_power_off is not None:
+        remaining = sec_to_exit - (time.time() - timer_power_off)
+        if remaining < 0:
+          remaining = 0
+        timer_label = "До выключения" if full_off else "До закрытия"
+        timer_off_t = f"{timer_label}: {remaining:.0f} сек"
+        draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 730)
 
-    if timer_power_off is not None:
-      remaining = sec_to_exit - (time.time() - timer_power_off)
-      if remaining < 0:
-        remaining = 0
-      timer_label = "До выключения" if full_off else "До закрытия"
-      timer_off_t = f"{timer_label}: {remaining:.0f} сек"
-      draw_text(screen, timer_off_t, font_small, (0, 0, 0), WIDTH * 0.5, 730)
+      # Кнопка раннего выключения системы
+      button_rect = pygame.Rect(WIDTH * 0.5 - 210, 820, 410, 60)
+      pygame.draw.rect(screen, (200, 200, 200), button_rect, border_radius=15)
+      button_text = font_small.render("Выключить сейчас", True, (0, 0, 0))
+      screen.blit(button_text, button_text.get_rect(center=button_rect.center))
 
-    # Кнопка раннего выключения системы
-    button_rect = pygame.Rect(WIDTH * 0.5 - 210, 820, 410, 60)
-    pygame.draw.rect(screen, (200, 200, 200), button_rect, border_radius=15)
-    button_text = font_small.render("Выключить сейчас", True, (0, 0, 0))
-    screen.blit(button_text, button_text.get_rect(center=button_rect.center))
+      mouse = pygame.mouse.get_pos()
+      click = pygame.mouse.get_pressed()
+      if button_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
+        sec_to_exit = 0
 
-    mouse = pygame.mouse.get_pos()
-    click = pygame.mouse.get_pressed()
-    if button_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
-      sec_to_exit = 0
+      should_exit_now = False
+      if timer_power_off is not None:
+        if sec_to_exit == 0:
+          should_exit_now = True
+        elif (time.time() - timer_power_off) > sec_to_exit:
+          should_exit_now = True
 
-    should_exit_now = False
-    if timer_power_off is not None:
-      if sec_to_exit == 0:
-        should_exit_now = True
-      elif (time.time() - timer_power_off) > sec_to_exit:
-        should_exit_now = True
-
-    if should_exit_now:
-      if not can_start_record:
-        # Остановить запись
-        recorder_proc.send_signal(signal.SIGINT)
-        recorder_proc.wait()
-        print(">>> Запись остановлена")
-      fold_mirrors_on_exit()
-      time.sleep(0.4)
-      SaveData()
-      running = False
-      pygame.quit()
-      if full_off:
-        import os
-        print("OFF")
-        os.system('sudo shutdown now')
-      break
+      if should_exit_now:
+        perform_exit("shutdown timer")
+        break
+    except Exception as exc:
+      log_exception("TRIP_STAT", exc)
+      if timer_power_off is not None:
+        perform_exit("trip_stat exception")
+        break
+      draw_text_center(screen, "Ошибка статистики, см. лог", font_small, RED_COLOR, HEIGHT // 2)
+      pygame.display.flip()
+      clock.tick(5)
+      continue
 
 
   pygame.display.flip()
