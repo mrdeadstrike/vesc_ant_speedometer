@@ -2323,13 +2323,15 @@ while running:
           accel_last_sample_time = now_t
           accel_last_speed_mps = cur_speed_mps
 
-        # рисуем график ускорения внизу экрана
-        g_x, g_y, g_w, g_h = 15, 660, WIDTH * 0.34, 120
-        draw_acceleration_graph(screen, g_x, g_y, g_w, g_h, accel_history)
+        # # рисуем график ускорения внизу экрана
+        # g_x, g_y, g_w, g_h = 15, 660, WIDTH * 0.34, 120
+        # draw_acceleration_graph(screen, g_x, g_y, g_w, g_h, accel_history)
+        pass
       elif measured_time is not None:
-        # после завершения замера продолжаем показывать последний график
-        g_x, g_y, g_w, g_h = 15, 660, WIDTH * 0.34, 120
-        draw_acceleration_graph(screen, g_x, g_y, g_w, g_h, accel_history)
+        # # после завершения замера продолжаем показывать последний график
+        # g_x, g_y, g_w, g_h = 15, 660, WIDTH * 0.34, 120
+        # draw_acceleration_graph(screen, g_x, g_y, g_w, g_h, accel_history)
+        pass
     except:
       pass
 
