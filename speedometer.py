@@ -178,12 +178,24 @@ trip_avg_speed = 0.0
 trip_time_start = time.time()
 
 saved_odometer = 0.0
+video_record_counter = 1
 try:
   with open("mainData.txt", "r") as f:
-    saved_odometer = float(f.read().strip())
+    lines = [line.strip() for line in f.readlines() if line.strip() != ""]
+    if lines:
+      saved_odometer = float(lines[0])
+    if len(lines) > 1:
+      try:
+        video_record_counter = int(lines[1])
+      except ValueError:
+        video_record_counter = 1
+    if video_record_counter < 1:
+      video_record_counter = 1
     print(f"Загружен одометр: {saved_odometer:.1f} км")
+    print(f"Счётчик записей: {video_record_counter}")
 except:
   saved_odometer = 0.0
+  video_record_counter = 1
 
 data = {
   'speed': 0.0,
@@ -1865,9 +1877,10 @@ def get_motor_temp_color(temp):
 def SaveData():
   try:
     with open("mainData.txt", "w") as f:
-      f.write(f"{data['odometer'] + data['trip_odometer']:.1f}")
+      total_odometer = data['odometer'] + data['trip_odometer']
+      f.write(f"{total_odometer:.1f}\n{video_record_counter}")
   except Exception as e:
-    print("Ошибка сохранения одометра:", e)
+    print("Ошибка сохранения данных:", e)
 
 def SetDebugValues():
   #DEBUG_VISUAL_TEST
@@ -2500,10 +2513,16 @@ while running:
       if record_rect.collidepoint(mouse) and click[0] and IS_RASPBERY:
         # Старт записи
         unique_suffix = uuid.uuid4().hex[:8]
-        filename = f"trip_{unique_suffix}.mp4"
-        can_start_record = False
-        recorder_proc = subprocess.Popen(["wf-recorder", "-f", filename])
-        print(f">>> Запись началась: {filename}")
+        filename = f"trip_{unique_suffix}_{video_record_counter}.mp4"
+        try:
+          recorder_proc = subprocess.Popen(["wf-recorder", "-f", filename])
+        except Exception as exc:
+          log_exception("Старт записи", exc)
+        else:
+          video_record_counter += 1
+          SaveData()
+          can_start_record = False
+          print(f">>> Запись началась: {filename}")
 
     # Кнопка блокировки
     btn_x += button_size + button_spacing
