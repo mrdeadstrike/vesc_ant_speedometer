@@ -2015,7 +2015,7 @@ while running:
     bar_width = 350
     bar_height = 25
     bar_x = (WIDTH - bar_width) / 2
-    bar_y = speed_y - font_large.get_height() / 2 - bar_height - 8 + 50
+    bar_y = speed_y - font_large.get_height() / 2 - bar_height - 8 + 40
     pygame.draw.rect(screen, (200, 200, 200), (bar_x, bar_y, bar_width, bar_height), width=2, border_radius=15)
 
     cur_speed = max(0, data['speed'])
