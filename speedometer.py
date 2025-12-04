@@ -75,6 +75,9 @@ TEXT_COLOR_ROLES = {
 }
 current_theme = THEME_LIGHT
 
+# Вертикальный сдвиг основной отрисовки (кроме верхних и нижних элементов)
+CONTENT_Y_OFFSET = 130
+
 def get_theme_color(key, default=None):
   theme = THEMES.get(current_theme, THEMES[THEME_LIGHT])
   return theme.get(key, default)
@@ -1607,7 +1610,7 @@ class ThemedFont:
   def __getattr__(self, attr):
     return getattr(self._font, attr)
 
-font_large = ThemedFont(pygame.font.SysFont('Arial', 150))
+font_large = ThemedFont(pygame.font.SysFont('Arial', 260))
 font_medium = ThemedFont(pygame.font.SysFont('Arial', 50, True))
 font_small = ThemedFont(pygame.font.SysFont('Arial', 40, True))
 font_tick = ThemedFont(pygame.font.SysFont('Arial', 30, True))
@@ -1889,7 +1892,7 @@ def SetDebugValues():
   data['master']['motor_current'] = 200 * changeV
   data['slave']['motor_current'] = 180 * (1 - changeV)
   data['bms_current'] = 50 * changeV
-  data['speed'] = 70 * changeV
+  data['speed'] = 120 * changeV
   data['master']['duty'] = 300 * changeV
   data['slave']['duty'] = 280 * (1 - changeV)
   data['master']['battery_current'] = 60 * changeV
@@ -2003,7 +2006,9 @@ while running:
     #if average_duty >= 85:
     #  speed_color = (255, 0, 0)
 
-    draw_speed_arc(screen, (WIDTH//2, 180 + up_gap), 150, int(data['speed']), 100, up_gap)
+    #draw_speed_arc(screen, (WIDTH//2, 180 + up_gap + CONTENT_Y_OFFSET), 150, int(data['speed']), 100, up_gap)
+    speed_y = 180 + up_gap + CONTENT_Y_OFFSET - 80
+    draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), speed_y)
 
     # 2. Показатели контроллеров мастер и слейв
     y_offset = 360
@@ -2015,7 +2020,7 @@ while running:
     
     up_gap += 20
 
-    stats_bar_start = 30 + up_gap
+    stats_bar_start = 30 + up_gap + CONTENT_Y_OFFSET
     stats_bar_step = 85
     stats_bar_width = 100
     stats_bar_height = 15
@@ -2038,14 +2043,14 @@ while running:
     draw_progress_bar(screen, right_bar_x, stats_bar_start + stats_bar_step, stats_bar_width, stats_bar_height, master_battery_current, 80, f"{master_battery_current}A", (0, 0, 255))
     draw_progress_bar(screen, right_bar_x, stats_bar_start + stats_bar_step * 2, stats_bar_width, stats_bar_height, master_duty, 100, f"{master_duty}", (0, 0, 0))
 
-    draw_text_center(screen, str(get_display_power()) + " Вт", font_small, (0, 0, 0), 295)
+    draw_text_center(screen, str(get_display_power()) + " Вт", font_small, (0, 0, 0), 295 + CONTENT_Y_OFFSET)
 
     # Когда ослабление магнитного поля активно рисуем рамку
     #if average_duty >= 85:
     #  pygame.draw.rect(screen, (255, 0, 0), (0, 0, WIDTH, HEIGHT), width=12, border_radius=0)
 
     #Температура всего
-    temp_y = 345
+    temp_y = 345 + CONTENT_Y_OFFSET
     border_r = 10
     pygame.draw.rect(screen, (200, 200, 200), (15, temp_y - 22, WIDTH * 0.46, 44), width=2, border_radius=border_r)
     draw_text(screen, f"МК", font_small, (200, 200, 200), WIDTH * 0.1, temp_y)
@@ -2162,7 +2167,7 @@ while running:
 
     # 4. Вольтаж батареи и заряд
     boostDown = 50
-    v_y = 450
+    v_y = 450 + CONTENT_Y_OFFSET
     # запоминаем вольтаж без нагрузки и рекуперации
     if int(summ_current) == 0:
       data['v_without_nagruzka'] = data['bms_voltage']
