@@ -1610,7 +1610,7 @@ class ThemedFont:
   def __getattr__(self, attr):
     return getattr(self._font, attr)
 
-font_large = ThemedFont(pygame.font.SysFont('Arial', 280))
+font_large = ThemedFont(pygame.font.SysFont('Arial', 310))
 font_medium = ThemedFont(pygame.font.SysFont('Arial', 50, True))
 font_small = ThemedFont(pygame.font.SysFont('Arial', 40, True))
 font_tick = ThemedFont(pygame.font.SysFont('Arial', 30, True))
@@ -2545,9 +2545,9 @@ while running:
 
     # Кнопка переключения темы между зелёной и синей, но ниже
     theme_button_radius = button_size // 2
-    lower_row_y = btn_y + button_size + (button_spacing // 2) + theme_button_radius
-    middle_x = int((record_rect.centerx + lock_rect.centerx) / 2)
-    theme_button_center = (middle_x, lower_row_y)
+    same_row_y = btn_y + theme_button_radius
+    # Размещаем тему справа от синей кнопки на том же уровне по высоте
+    theme_button_center = (lock_rect.right + button_spacing + theme_button_radius, same_row_y)
     theme_button_color = (0, 0, 0) if not is_dark_theme() else (255, 255, 255)
     theme_button_border = (200, 200, 200) if is_dark_theme() else (60, 60, 60)
     pygame.draw.circle(screen, theme_button_color, theme_button_center, theme_button_radius)
