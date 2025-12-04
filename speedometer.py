@@ -2011,21 +2011,21 @@ while running:
     draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), speed_y)
 
     # 2. Показатели контроллеров мастер и слейв
-    y_offset = 360
-    spacing_x = 250
-
     summ_current = data['slave']['motor_current'] + data['master']['motor_current']
     #if summ_current > 200:
     #  summ_current = 200
     
     up_gap += 20
-
-    stats_bar_start = 30 + up_gap + CONTENT_Y_OFFSET - 70
-    stats_bar_step = 85
     stats_bar_width = 100
     stats_bar_height = 15
-    left_bar_x = 10
-    right_bar_x = WIDTH - stats_bar_width - 10
+    stats_bar_spacing = 130
+    stats_block_y = speed_y + 120
+    bar_offsets = [
+      -1.5 * stats_bar_spacing,
+      -0.5 * stats_bar_spacing,
+      0.5 * stats_bar_spacing,
+      1.5 * stats_bar_spacing,
+    ]
 
     slave_motor_current = int(abs(data['slave']['motor_current']))
     slave_battery_current = int(abs(data['slave']['battery_current']))
@@ -2035,13 +2035,16 @@ while running:
     master_battery_current = int(abs(data['master']['battery_current']))
     master_duty = int(abs(data['master']['duty']))
 
-    draw_progress_bar(screen, left_bar_x, stats_bar_start, stats_bar_width, stats_bar_height, slave_motor_current, 200, f"{slave_motor_current}A", (255, 0, 0))
-    draw_progress_bar(screen, left_bar_x, stats_bar_start + stats_bar_step, stats_bar_width, stats_bar_height, slave_battery_current, 80, f"{slave_battery_current}A", (0, 0, 255))
-    draw_progress_bar(screen, left_bar_x, stats_bar_start + stats_bar_step * 2, stats_bar_width, stats_bar_height, slave_duty, 100, f"{slave_duty}", (0, 0, 0))
+    bar_lineup = [
+      (slave_duty, 100, f"{slave_duty}", (0, 0, 0)),
+      (slave_battery_current, 80, f"{slave_battery_current}A", (0, 0, 255)),
+      (master_battery_current, 80, f"{master_battery_current}A", (0, 0, 255)),
+      (master_duty, 100, f"{master_duty}", (0, 0, 0)),
+    ]
 
-    draw_progress_bar(screen, right_bar_x, stats_bar_start, stats_bar_width, stats_bar_height, master_motor_current, 200, f"{master_motor_current}A", (255, 0, 0))
-    draw_progress_bar(screen, right_bar_x, stats_bar_start + stats_bar_step, stats_bar_width, stats_bar_height, master_battery_current, 80, f"{master_battery_current}A", (0, 0, 255))
-    draw_progress_bar(screen, right_bar_x, stats_bar_start + stats_bar_step * 2, stats_bar_width, stats_bar_height, master_duty, 100, f"{master_duty}", (0, 0, 0))
+    for (value, max_val, text, color), dx in zip(bar_lineup, bar_offsets):
+      x = WIDTH * 0.5 + dx - stats_bar_width / 2
+      draw_progress_bar(screen, x, stats_block_y, stats_bar_width, stats_bar_height, value, max_val, text, color)
 
     draw_text_center(screen, str(get_display_power()) + " Вт", font_small, (0, 0, 0), 295 + CONTENT_Y_OFFSET)
 
