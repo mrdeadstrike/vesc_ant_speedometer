@@ -2010,6 +2010,36 @@ while running:
     speed_y = 180 + up_gap + CONTENT_Y_OFFSET - 115
     draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), speed_y)
 
+    # Прогресс-бар скорости (0-100 км/ч) над цифрой
+    bar_max_speed = 100
+    bar_width = 350
+    bar_height = 18
+    bar_x = (WIDTH - bar_width) / 2
+    bar_y = speed_y - font_large.get_height() / 2 - bar_height - 8 + 50
+    pygame.draw.rect(screen, (200, 200, 200), (bar_x, bar_y, bar_width, bar_height), width=2, border_radius=10)
+
+    cur_speed = max(0, data['speed'])
+    base_fill = min(cur_speed, bar_max_speed)
+    base_width = bar_width * (base_fill / bar_max_speed)
+    if base_width > 0:
+      pygame.draw.rect(
+        screen,
+        GREEN_COLOR,
+        (bar_x, bar_y, base_width, bar_height),
+        border_radius=9
+      )
+
+    if cur_speed > bar_max_speed:
+      overflow = cur_speed - bar_max_speed
+      overflow_width = bar_width * (overflow / bar_max_speed)
+      overflow_color = (255, 0, 0) if miganie else (200, 0, 0)
+      pygame.draw.rect(
+        screen,
+        overflow_color,
+        (bar_x + bar_width, bar_y, overflow_width, bar_height),
+        border_radius=9
+      )
+
     # 2. Показатели контроллеров мастер и слейв
     summ_current = data['slave']['motor_current'] + data['master']['motor_current']
     #if summ_current > 200:
