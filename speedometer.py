@@ -1610,7 +1610,7 @@ class ThemedFont:
   def __getattr__(self, attr):
     return getattr(self._font, attr)
 
-font_large = ThemedFont(pygame.font.SysFont('Arial', 250))
+font_large = ThemedFont(pygame.font.SysFont('Arial', 280))
 font_medium = ThemedFont(pygame.font.SysFont('Arial', 50, True))
 font_small = ThemedFont(pygame.font.SysFont('Arial', 40, True))
 font_tick = ThemedFont(pygame.font.SysFont('Arial', 30, True))
@@ -2007,7 +2007,7 @@ while running:
     #  speed_color = (255, 0, 0)
 
     #draw_speed_arc(screen, (WIDTH//2, 180 + up_gap + CONTENT_Y_OFFSET), 150, int(data['speed']), 100, up_gap)
-    speed_y = 180 + up_gap + CONTENT_Y_OFFSET - 80
+    speed_y = 180 + up_gap + CONTENT_Y_OFFSET - 115
     draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), speed_y)
 
     # 2. Показатели контроллеров мастер и слейв
@@ -2019,7 +2019,7 @@ while running:
     stats_bar_width = 100
     stats_bar_height = 15
     stats_bar_spacing = 140
-    stats_block_y = speed_y + 120
+    stats_block_y = speed_y + 155  # опустили полосы на 50px ниже текущей позиции
     bar_offsets = [
       -1.7 * stats_bar_spacing,
       -0.5 * stats_bar_spacing - 50,
