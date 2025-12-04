@@ -1610,7 +1610,7 @@ class ThemedFont:
   def __getattr__(self, attr):
     return getattr(self._font, attr)
 
-font_large = ThemedFont(pygame.font.SysFont('Arial', 260))
+font_large = ThemedFont(pygame.font.SysFont('Arial', 250))
 font_medium = ThemedFont(pygame.font.SysFont('Arial', 50, True))
 font_small = ThemedFont(pygame.font.SysFont('Arial', 40, True))
 font_tick = ThemedFont(pygame.font.SysFont('Arial', 30, True))
@@ -2020,7 +2020,7 @@ while running:
     
     up_gap += 20
 
-    stats_bar_start = 30 + up_gap + CONTENT_Y_OFFSET
+    stats_bar_start = 30 + up_gap + CONTENT_Y_OFFSET - 70
     stats_bar_step = 85
     stats_bar_width = 100
     stats_bar_height = 15
