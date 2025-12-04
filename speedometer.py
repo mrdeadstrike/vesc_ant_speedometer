@@ -2018,13 +2018,13 @@ while running:
     up_gap += 20
     stats_bar_width = 100
     stats_bar_height = 15
-    stats_bar_spacing = 130
+    stats_bar_spacing = 140
     stats_block_y = speed_y + 120
     bar_offsets = [
-      -1.5 * stats_bar_spacing,
-      -0.5 * stats_bar_spacing,
-      0.5 * stats_bar_spacing,
-      1.5 * stats_bar_spacing,
+      -1.7 * stats_bar_spacing,
+      -0.5 * stats_bar_spacing - 50,
+      0.5 * stats_bar_spacing + 50,
+      1.7 * stats_bar_spacing,
     ]
 
     slave_motor_current = int(abs(data['slave']['motor_current']))
@@ -2046,7 +2046,7 @@ while running:
       x = WIDTH * 0.5 + dx - stats_bar_width / 2
       draw_progress_bar(screen, x, stats_block_y, stats_bar_width, stats_bar_height, value, max_val, text, color)
 
-    draw_text_center(screen, str(get_display_power()) + " Вт", font_small, (0, 0, 0), 295 + CONTENT_Y_OFFSET)
+    draw_text_center(screen, str(get_display_power()), font_small, (0, 0, 0), 295 + CONTENT_Y_OFFSET)
 
     # Когда ослабление магнитного поля активно рисуем рамку
     #if average_duty >= 85:
