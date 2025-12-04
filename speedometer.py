@@ -2008,23 +2008,25 @@ while running:
 
     #draw_speed_arc(screen, (WIDTH//2, 180 + up_gap + CONTENT_Y_OFFSET), 150, int(data['speed']), 100, up_gap)
     speed_y = 180 + up_gap + CONTENT_Y_OFFSET - 115
-    draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), speed_y)
+    draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), speed_y + 10)
 
     # Прогресс-бар скорости (0-100 км/ч) над цифрой
-    bar_max_speed = 100
+    bar_max_speed = 60
     bar_width = 350
-    bar_height = 18
+    bar_height = 25
     bar_x = (WIDTH - bar_width) / 2
     bar_y = speed_y - font_large.get_height() / 2 - bar_height - 8 + 50
-    pygame.draw.rect(screen, (200, 200, 200), (bar_x, bar_y, bar_width, bar_height), width=2, border_radius=10)
+    pygame.draw.rect(screen, (200, 200, 200), (bar_x, bar_y, bar_width, bar_height), width=2, border_radius=15)
 
     cur_speed = max(0, data['speed'])
     base_fill = min(cur_speed, bar_max_speed)
     base_width = bar_width * (base_fill / bar_max_speed)
+    blinking_over_limit = cur_speed > bar_max_speed
+    base_color = GREEN_COLOR if not blinking_over_limit else ((255, 0, 0) if miganie else (160, 160, 160))
     if base_width > 0:
       pygame.draw.rect(
         screen,
-        GREEN_COLOR,
+        base_color,
         (bar_x, bar_y, base_width, bar_height),
         border_radius=9
       )
@@ -2032,11 +2034,11 @@ while running:
     if cur_speed > bar_max_speed:
       overflow = cur_speed - bar_max_speed
       overflow_width = bar_width * (overflow / bar_max_speed)
-      overflow_color = (255, 0, 0) if miganie else (200, 0, 0)
+      overflow_color = (255, 0, 0) if miganie else (160, 160, 160)
       pygame.draw.rect(
         screen,
         overflow_color,
-        (bar_x + bar_width, bar_y, overflow_width, bar_height),
+        (bar_x + bar_width + 5, bar_y, overflow_width, bar_height),
         border_radius=9
       )
 
