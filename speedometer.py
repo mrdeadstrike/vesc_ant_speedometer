@@ -2011,7 +2011,7 @@ while running:
     draw_text_center(screen, f"{int(data['speed'])}", font_large, (0, 0, 0), speed_y + 10)
 
     # Прогресс-бар скорости (0-100 км/ч) над цифрой
-    bar_max_speed = 60
+    bar_max_speed = 70
     bar_width = 350
     bar_height = 25
     bar_x = (WIDTH - bar_width) / 2
