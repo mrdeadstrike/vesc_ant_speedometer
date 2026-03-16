@@ -1906,6 +1906,7 @@ def SetDebugValues():
 # Переменные для замера разгона 0-60 км/ч
 start_time = None
 measured_time = None
+measured_time_0_100 = None
 ready = True
 measuring = False
 trip_start_time = None
@@ -1913,7 +1914,9 @@ timer_power_off = None
 block_touch = False
 prev_speed = 0
 zamer_success = False
+zamer_0_100_success = False
 zamer_success_prev = False
+ACCEL_MEASURE_TIMEOUT = 25.0
 
 can_start_record = True
 recorder_proc = None
@@ -2292,24 +2295,47 @@ while running:
       trip_start_time = time.time()
       data_trip['trip_start_bettery_perc'] = data['battery_level']
 
-    # 3. Замер времени разгона 0-60 км/ч
+    # 3. Замер времени разгона 0-60 и 0-100 км/ч
     if ready and data['speed'] > 0:
       start_time = time.time()
+      measured_time = None
+      measured_time_0_100 = None
       ready = False
       measuring = True
+      zamer_success = False
+      zamer_0_100_success = False
 
-    if measuring and data['speed'] >= 60:
-      measured_time = time.time() - start_time
-      measuring = False
-      zamer_success = True
+    elapsed_since_start = None
+    if start_time is not None:
+      elapsed_since_start = time.time() - start_time
 
-    if int(data['speed']) == 0 or (not zamer_success and (start_time is not None and (time.time() - start_time) > 25)):
+    if measuring and start_time is not None:
+      if not zamer_success and data['speed'] >= 60:
+        measured_time = elapsed_since_start
+        zamer_success = True
+
+      if zamer_success and (not zamer_0_100_success) and data['speed'] >= 100:
+        measured_time_0_100 = elapsed_since_start
+        zamer_0_100_success = True
+        measuring = False
+        start_time = None
+
+      if elapsed_since_start is not None and elapsed_since_start > ACCEL_MEASURE_TIMEOUT:
+        measuring = False
+        start_time = None
+        if not zamer_success:
+          measured_time = None
+        measured_time_0_100 = None
+        zamer_0_100_success = False
+
+    if int(data['speed']) == 0:
       start_time = None
       measured_time = None
-      if zamer_success or int(data['speed']) == 0:
-        ready = True
+      measured_time_0_100 = None
+      ready = True
       measuring = False
       zamer_success = False
+      zamer_0_100_success = False
     prev_speed = int(data['speed'])
 
     if not zamer_success_prev and zamer_success:
@@ -2388,15 +2414,25 @@ while running:
     except:
       pass
 
-    # подпись замера 0-60
+    # подпись замера 0-60 / 0-100
     razg_boost = 260
-    if measuring:
+    razg_y = 600 + razg_boost
+    result_0_60_x = WIDTH // 2 - 175
+    result_0_60_y = razg_y - 58
+    if measuring and start_time is not None:
       current_elapsed = time.time() - start_time
-      draw_text_center(screen, f"Разгон: {current_elapsed:.2f} сек", font_medium, (0, 0, 0), 600 + razg_boost)
+      if zamer_success and measured_time is not None:
+        draw_text(screen, f"0-60: {measured_time:.2f} с", font_small, (0, 0, 0), result_0_60_x, result_0_60_y)
+        draw_text_center(screen, f"0-100: {current_elapsed:.2f} с", font_medium, (0, 0, 0), razg_y)
+      else:
+        draw_text_center(screen, f"Разгон: {current_elapsed:.2f} с", font_medium, (0, 0, 0), razg_y)
+    elif measured_time_0_100 is not None and measured_time is not None:
+      draw_text(screen, f"0-60: {measured_time:.2f} с", font_small, (0, 0, 0), result_0_60_x, result_0_60_y)
+      draw_text_center(screen, f"0-100: {measured_time_0_100:.2f} с", font_medium, (0, 0, 0), razg_y)
     elif measured_time is not None:
-      draw_text_center(screen, f"0-60: {measured_time:.2f} сек", font_medium, (0, 0, 0), 600 + razg_boost)
+      draw_text_center(screen, f"0-60: {measured_time:.2f} с", font_medium, (0, 0, 0), razg_y)
     else:
-      draw_text_center(screen, "-", font_medium, (0, 0, 0), 600 + razg_boost)
+      draw_text_center(screen, "-", font_medium, (0, 0, 0), razg_y)
     # сбрасываем маркер первого кадра замера, когда замера нет
     if not measuring:
       accel_last_sample_time = None
