@@ -19,6 +19,13 @@ cd /Users/deadstrike/wm/WM_DATA/vesc_ant_speedometer
 ./web_run.sh
 ```
 
+Остановка всех процессов веб-сервиса:
+
+```bash
+cd /Users/deadstrike/wm/WM_DATA/vesc_ant_speedometer
+./stop_web.sh
+```
+
 Скрипт:
 - создаёт/обновляет `backend/.venv`
 - ставит Python зависимости
@@ -33,8 +40,13 @@ cd /Users/deadstrike/wm/WM_DATA/vesc_ant_speedometer
 - `START_BLE_BRIDGES=0` — не запускать BLE-мосты
 - `BACKEND_PORT=8010` / `FRONTEND_PORT=5173` — поменять порты
 - `MAIN_DATA_FILE=/path/to/mainData.txt` — файл одометра
+- на macOS mock-режим включается автоматически, без флагов, и чтение железа отключено
 - `DEBUG_MOCK=1` — принудительно включить отладочные данные
-- `DEBUG_MOCK=0` — отключить отладочные данные
+- `DEBUG_MOCK=0` — отключить отладочные данные (актуально для Linux/Raspberry)
+- `WS_HZ=12` — частота отправки кадров по WebSocket (по умолчанию 12 Гц)
+- `VESC_SERIAL_TIMEOUT=0.12` — таймаут чтения VESC (меньше = быстрее реакция на таймаут)
+- `ENABLE_SLAVE_POLL=1` — читать slave контроллер
+- `SLAVE_POLL_EVERY=3` — читать slave раз в N циклов master (по умолчанию 3)
 
 По умолчанию `DEBUG_MOCK=auto`: мок включается автоматически, если нет живых данных от VESC и BMS.
 

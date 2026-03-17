@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const EMPTY = {
   speed_kmh: 0,
@@ -93,10 +93,13 @@ function SpeedBar({ speed }) {
 export default function App() {
   const [snapshot, setSnapshot] = useState(EMPTY);
   const [connected, setConnected] = useState(false);
+  const latestRef = useRef(EMPTY);
+  const uiFps = Math.max(5, Number(import.meta.env.VITE_UI_FPS || 10));
 
   useEffect(() => {
     let ws;
     let reconnectTimer;
+    let renderTimer;
     let disposed = false;
 
     const connect = () => {
@@ -110,7 +113,7 @@ export default function App() {
       ws.onmessage = (event) => {
         try {
           const next = JSON.parse(event.data);
-          setSnapshot(next);
+          latestRef.current = next;
         } catch {
           // ignore malformed payloads
         }
@@ -127,15 +130,25 @@ export default function App() {
     };
 
     connect();
+    renderTimer = setInterval(() => {
+      setSnapshot((prev) => {
+        const next = latestRef.current;
+        if (!next || next.timestamp === prev.timestamp) {
+          return prev;
+        }
+        return next;
+      });
+    }, Math.round(1000 / uiFps));
 
     return () => {
       disposed = true;
       clearTimeout(reconnectTimer);
+      clearInterval(renderTimer);
       if (ws && ws.readyState < 2) {
         ws.close();
       }
     };
-  }, []);
+  }, [uiFps]);
 
   const speed = Math.round(snapshot.speed_kmh || 0);
   const bmsSensors = [

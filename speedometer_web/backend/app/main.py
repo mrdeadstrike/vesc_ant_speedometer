@@ -116,18 +116,35 @@ class TelemetryEngine:
         self.state = state
         self.stop_event = threading.Event()
         self.threads: list[threading.Thread] = []
+        self.is_macos = sys.platform == "darwin"
 
         self.vesc_port_override = os.getenv("VESC_PORT_OVERRIDE", "/tmp/vesc-ble")
         self.bms_port_override = os.getenv("BMS_PORT_OVERRIDE", "/tmp/bms-ble")
         self.debug_mock_mode = os.getenv("DEBUG_MOCK", "auto").strip().lower()
+        self.vesc_serial_timeout = float(os.getenv("VESC_SERIAL_TIMEOUT", "0.12"))
+        self.enable_slave_poll = os.getenv("ENABLE_SLAVE_POLL", "1").strip().lower() not in {"0", "false", "off", "no"}
+        self.slave_poll_every = max(1, int(os.getenv("SLAVE_POLL_EVERY", "3")))
 
     def start(self) -> None:
-        self.threads = [
-            threading.Thread(target=self._vesc_worker, daemon=True, name="vesc-reader"),
-            threading.Thread(target=self._bms_worker, daemon=True, name="bms-reader"),
-            threading.Thread(target=self._mock_worker, daemon=True, name="mock-reader"),
-            threading.Thread(target=self._autosave_worker, daemon=True, name="odometer-autosave"),
-        ]
+        force_mock = self.debug_mock_mode in {"1", "true", "on", "yes"} or self.is_macos
+        start_hw = not force_mock
+
+        self.threads = []
+        if start_hw:
+            self.threads.extend(
+                [
+                    threading.Thread(target=self._vesc_worker, daemon=True, name="vesc-reader"),
+                    threading.Thread(target=self._bms_worker, daemon=True, name="bms-reader"),
+                ]
+            )
+        else:
+            print("[ENGINE] mock mode enabled (hardware readers disabled)", flush=True)
+        self.threads.extend(
+            [
+                threading.Thread(target=self._mock_worker, daemon=True, name="mock-reader"),
+                threading.Thread(target=self._autosave_worker, daemon=True, name="odometer-autosave"),
+            ]
+        )
         for thread in self.threads:
             thread.start()
 
@@ -138,7 +155,7 @@ class TelemetryEngine:
         self.state.save_odometer()
 
     def _is_mac(self) -> bool:
-        return sys.platform == "darwin"
+        return self.is_macos
 
     def _iter_vesc_ports(self) -> Iterator[str]:
         seen: set[str] = set()
@@ -214,8 +231,8 @@ class TelemetryEngine:
                     ser = serial.Serial(
                         port,
                         115200,
-                        timeout=DEFAULT_VESC_SERIAL_TIMEOUT,
-                        write_timeout=DEFAULT_VESC_SERIAL_TIMEOUT,
+                        timeout=self.vesc_serial_timeout,
+                        write_timeout=self.vesc_serial_timeout,
                     )
                     print(f"[VESC] connected: {port}", flush=True)
                     break
@@ -233,40 +250,65 @@ class TelemetryEngine:
                 except Exception:
                     pass
 
+                consecutive_master_errors = 0
+                consecutive_slave_errors = 0
+                slave_backoff_until = 0.0
+                cycle = 0
                 while not self.stop_event.is_set():
-                    master_raw = self._request_vesc_payload(ser, packet_master)
-                    parsed_master = parse_vesc_payload(master_raw)
-                    if parsed_master is None:
-                        raise SerialProtocolError("VESC master parse failed")
+                    try:
+                        master_raw = self._request_vesc_payload(ser, packet_master)
+                        parsed_master = parse_vesc_payload(master_raw)
+                        if parsed_master is None:
+                            raise SerialProtocolError("VESC master parse failed")
+                        self.state.update_vesc_master(*parsed_master)
+                        consecutive_master_errors = 0
+                    except Exception as exc:
+                        consecutive_master_errors += 1
+                        if consecutive_master_errors >= 6:
+                            raise SerialProtocolError(f"VESC master unstable: {exc}") from exc
+                        time.sleep(0.01)
+                        continue
 
-                    self.state.update_vesc_master(*parsed_master)
-
-                    slave_raw = self._request_vesc_payload(ser, packet_slave)
-                    parsed_slave = parse_vesc_payload(slave_raw)
-                    if parsed_slave is None:
-                        raise SerialProtocolError("VESC slave parse failed")
-
-                    (
-                        _,
-                        input_current,
-                        duty_cycle,
-                        _,
-                        motor_current,
-                        mos_temp,
-                        motor_temp,
-                    ) = parsed_slave
-                    self.state.update_vesc_slave(
-                        input_current=input_current,
-                        duty_cycle=duty_cycle,
-                        motor_current=motor_current,
-                        mos_temp=mos_temp,
-                        motor_temp=motor_temp,
+                    cycle += 1
+                    now_ts = time.time()
+                    should_poll_slave = (
+                        self.enable_slave_poll
+                        and now_ts >= slave_backoff_until
+                        and (cycle % self.slave_poll_every == 0)
                     )
+                    if should_poll_slave:
+                        try:
+                            slave_raw = self._request_vesc_payload(ser, packet_slave)
+                            parsed_slave = parse_vesc_payload(slave_raw)
+                            if parsed_slave is not None:
+                                (
+                                    _,
+                                    input_current,
+                                    duty_cycle,
+                                    _,
+                                    motor_current,
+                                    mos_temp,
+                                    motor_temp,
+                                ) = parsed_slave
+                                self.state.update_vesc_slave(
+                                    input_current=input_current,
+                                    duty_cycle=duty_cycle,
+                                    motor_current=motor_current,
+                                    mos_temp=mos_temp,
+                                    motor_temp=motor_temp,
+                                )
+                                consecutive_slave_errors = 0
+                        except Exception:
+                            # slave может временно молчать: не роняем master-поток
+                            consecutive_slave_errors += 1
+                            if consecutive_slave_errors >= 6:
+                                slave_backoff_until = time.time() + 5.0
+                                consecutive_slave_errors = 0
 
-                    time.sleep(0.05)
+                    time.sleep(0.02)
             except Exception as exc:
                 print(f"[VESC] reconnect reason: {exc}", flush=True)
-                time.sleep(1.0)
+                time.sleep(0.4)
             finally:
                 try:
                     ser.close()
@@ -334,10 +376,11 @@ class TelemetryEngine:
                 print(f"[SAVE] failed: {exc}", flush=True)
 
     def _mock_worker(self) -> None:
-        if self.debug_mock_mode in {"0", "false", "off", "no"}:
+        if self.is_macos:
+            force_mock = True
+        elif self.debug_mock_mode in {"0", "false", "off", "no"}:
             return
-
-        if self.debug_mock_mode in {"1", "true", "on", "yes"}:
+        elif self.debug_mock_mode in {"1", "true", "on", "yes"}:
             force_mock = True
         else:
             force_mock = False
@@ -397,12 +440,14 @@ async def telemetry_snapshot() -> dict:
 
 @app.websocket("/ws")
 async def telemetry_ws(websocket: WebSocket) -> None:
+    ws_hz = max(1.0, float(os.getenv("WS_HZ", "12")))
+    interval = 1.0 / ws_hz
     await websocket.accept()
     try:
         while True:
             payload = app.state.telemetry_state.snapshot()
             await websocket.send_json(payload)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(interval)
     except WebSocketDisconnect:
         return
 

@@ -7,6 +7,11 @@ WEB_DIR="${SCRIPT_DIR}/speedometer_web"
 BACKEND_DIR="${WEB_DIR}/backend"
 FRONTEND_DIR="${WEB_DIR}/frontend"
 VENV_DIR="${BACKEND_DIR}/.venv"
+RUN_DIR="${WEB_DIR}/.run"
+PID_BACKEND_FILE="${RUN_DIR}/backend.pid"
+PID_FRONTEND_FILE="${RUN_DIR}/frontend.pid"
+PID_VESC_BRIDGE_FILE="${RUN_DIR}/bridge_vesc.pid"
+PID_BMS_BRIDGE_FILE="${RUN_DIR}/bridge_bms.pid"
 
 BLE_VESC_SCRIPT="${SCRIPT_DIR}/start_ble_bridge.sh"
 BLE_BMS_SCRIPT="${SCRIPT_DIR}/start_ble_bms_bridge.sh"
@@ -45,6 +50,7 @@ cleanup() {
   stop_pid "${backend_pid}"
   stop_pid "${bridge_pid_bms}"
   stop_pid "${bridge_pid_vesc}"
+  rm -f "${PID_BACKEND_FILE}" "${PID_FRONTEND_FILE}" "${PID_VESC_BRIDGE_FILE}" "${PID_BMS_BRIDGE_FILE}"
 }
 
 trap cleanup EXIT INT TERM
@@ -57,6 +63,19 @@ fi
 require_cmd python3
 require_cmd node
 require_cmd npm
+
+IS_MAC=0
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  IS_MAC=1
+fi
+
+if [[ "${IS_MAC}" == "1" ]]; then
+  # На macOS всегда работаем в mock-only режиме, без BLE-мостов.
+  START_BLE_BRIDGES=0
+  echo ">>> macOS detected: включен mock-only режим (без чтения железа)"
+fi
+
+mkdir -p "${RUN_DIR}"
 
 free_port() {
   local port="$1"
@@ -139,11 +158,12 @@ fi
 VITE_BACKEND_PORT="${BACKEND_PORT}" npm run build
 popd >/dev/null
 
-if [[ "${START_BLE_BRIDGES}" == "1" ]]; then
+  if [[ "${START_BLE_BRIDGES}" == "1" ]]; then
   if [[ -x "${BLE_VESC_SCRIPT}" ]]; then
     echo ">>> Запуск BLE-моста VESC"
     "${BLE_VESC_SCRIPT}" &
     bridge_pid_vesc=$!
+    echo "${bridge_pid_vesc}" > "${PID_VESC_BRIDGE_FILE}"
   else
     echo ">>> BLE-мост VESC не запущен: ${BLE_VESC_SCRIPT} не найден или не исполняемый"
   fi
@@ -152,6 +172,7 @@ if [[ "${START_BLE_BRIDGES}" == "1" ]]; then
     echo ">>> Запуск BLE-моста BMS"
     "${BLE_BMS_SCRIPT}" &
     bridge_pid_bms=$!
+    echo "${bridge_pid_bms}" > "${PID_BMS_BRIDGE_FILE}"
   else
     echo ">>> BLE-мост BMS не запущен: ${BLE_BMS_SCRIPT} не найден или не исполняемый"
   fi
@@ -160,10 +181,14 @@ fi
 echo ">>> Запуск backend FastAPI на ${BACKEND_HOST}:${BACKEND_PORT}"
 (
   cd "${BACKEND_DIR}"
+  if [[ "${IS_MAC}" == "1" ]]; then
+    export DEBUG_MOCK=1
+  fi
   MAIN_DATA_FILE="${MAIN_DATA_FILE}" \
   uvicorn app.main:app --host "${BACKEND_HOST}" --port "${BACKEND_PORT}"
 ) &
 backend_pid=$!
+echo "${backend_pid}" > "${PID_BACKEND_FILE}"
 
 echo ">>> Запуск frontend preview на ${FRONTEND_HOST}:${FRONTEND_PORT}"
 (
@@ -171,6 +196,7 @@ echo ">>> Запуск frontend preview на ${FRONTEND_HOST}:${FRONTEND_PORT}"
   npm run preview -- --host "${FRONTEND_HOST}" --port "${FRONTEND_PORT}" --strictPort
 ) &
 frontend_pid=$!
+echo "${frontend_pid}" > "${PID_FRONTEND_FILE}"
 
 echo
 echo "Готово:"
