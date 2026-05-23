@@ -14,7 +14,8 @@ FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC:-}"
 FARDRIVER_MASTER_NAME="${FARDRIVER_MASTER_NAME:-YuanQuFOC158}"
 FARDRIVER_SLAVE_NAME="${FARDRIVER_SLAVE_NAME:-YuanQuFOC690}"
 FARDRIVER_NAME_PREFIX="${FARDRIVER_NAME_PREFIX:-YuanQuFOC}"
-FARDRIVER_SCAN_SECONDS="${FARDRIVER_SCAN_SECONDS:-20}"
+FARDRIVER_SCAN_SECONDS="${FARDRIVER_SCAN_SECONDS:-10}"
+FARDRIVER_PREFLIGHT_SCAN="${FARDRIVER_PREFLIGHT_SCAN:-1}"
 FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT:-/tmp/fardriver-master-ble}"
 FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT:-/tmp/fardriver-slave-ble}"
 
@@ -70,8 +71,7 @@ discover_fardriver_macs() {
   )"
 
   found_lines="$(printf '%s\n' "${scan_output}" \
-    | sed -nE "s/^.*Device ([0-9A-Fa-f:]{17}) (${FARDRIVER_NAME_PREFIX}[^[:space:]]*).*$/\U\1\E \2/p" \
-    | awk '!seen[$1]++')"
+    | sed -nE "s/^.*Device ([0-9A-Fa-f:]{17}) (${FARDRIVER_NAME_PREFIX}[^[:space:]]*).*$/\U\1\E \2/p")"
 
   if [[ -z "${found_lines}" ]]; then
     echo "Не нашёл BLE-устройства с именем ${FARDRIVER_NAME_PREFIX}." >&2
@@ -84,9 +84,9 @@ discover_fardriver_macs() {
 
   while read -r mac name; do
     [[ -z "${mac:-}" ]] && continue
-    if [[ -z "${FARDRIVER_MASTER_MAC}" && "${name}" == "${FARDRIVER_MASTER_NAME}" ]]; then
+    if [[ "${name}" == "${FARDRIVER_MASTER_NAME}" ]]; then
       FARDRIVER_MASTER_MAC="${mac}"
-    elif [[ -z "${FARDRIVER_SLAVE_MAC}" && "${name}" == "${FARDRIVER_SLAVE_NAME}" ]]; then
+    elif [[ "${name}" == "${FARDRIVER_SLAVE_NAME}" ]]; then
       FARDRIVER_SLAVE_MAC="${mac}"
     fi
   done <<< "${found_lines}"
@@ -103,6 +103,9 @@ discover_fardriver_macs() {
 if [[ -x "${BLE_CONTROLLER_SCRIPT}" ]]; then
   if [[ "${CONTROLLER_TYPE}" == "fardriver" ]]; then
     if [[ "${FARDRIVER_BLE_BACKEND}" == "bleak" ]]; then
+      if [[ "${FARDRIVER_PREFLIGHT_SCAN}" != "0" && ( -z "${FARDRIVER_MASTER_MAC}" || -z "${FARDRIVER_SLAVE_MAC}" ) ]]; then
+        discover_fardriver_macs || echo "Предварительный bluetoothctl scan не нашёл оба контроллера, Python попробует найти их сам"
+      fi
       echo "FarDriver BLE backend: bleak, BLE-мосты не запускаются"
       echo "Поиск контроллеров будет внутри Python по именам: master=${FARDRIVER_MASTER_NAME}, slave=${FARDRIVER_SLAVE_NAME}"
     else
