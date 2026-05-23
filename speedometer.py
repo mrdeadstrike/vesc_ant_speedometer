@@ -1358,6 +1358,8 @@ def choose_fardriver_characteristics(client, controller_key):
   return notify_char, write_char
 
 async def find_fardriver_device(mac, target_name, controller_key):
+  from bleak import BleakScanner
+
   print(f"FarDriver {controller_key}: BLE scan/connect name={target_name} mac={mac or '-'}", flush=True)
   devices = await BleakScanner.discover(timeout=12.0)
   candidates = []
