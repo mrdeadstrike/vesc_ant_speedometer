@@ -66,6 +66,9 @@ FARDRIVER_INIT_COMMANDS_HEX = os.environ.get(
   "aa13ec070000b04f,aa07f8000000a956"
 )
 FARDRIVER_DEBUG_NOTIFY = int(os.environ.get("FARDRIVER_DEBUG_NOTIFY", "8"))
+FARDRIVER_SCAN_TIMEOUT = float(os.environ.get("FARDRIVER_SCAN_TIMEOUT", "5"))
+FARDRIVER_CONNECT_TIMEOUT = float(os.environ.get("FARDRIVER_CONNECT_TIMEOUT", "10"))
+FARDRIVER_RECONNECT_DELAY = float(os.environ.get("FARDRIVER_RECONNECT_DELAY", "1"))
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -1361,7 +1364,7 @@ async def find_fardriver_device(mac, target_name, controller_key):
   from bleak import BleakScanner
 
   print(f"FarDriver {controller_key}: BLE scan/connect name={target_name} mac={mac or '-'}", flush=True)
-  devices = await BleakScanner.discover(timeout=12.0)
+  devices = await BleakScanner.discover(timeout=FARDRIVER_SCAN_TIMEOUT)
   candidates = []
   for item in devices:
     item_name = item.name or ""
@@ -1382,7 +1385,13 @@ async def find_fardriver_device(mac, target_name, controller_key):
     ]
 
   if candidates:
-    return candidates[0]
+    candidates.sort(key=lambda item: getattr(item, "rssi", -999), reverse=True)
+    selected = candidates[0]
+    print(
+      f"FarDriver {controller_key}: candidate selected {selected.address} {selected.name} rssi={getattr(selected, 'rssi', 'n/a')}",
+      flush=True
+    )
+    return selected
 
   names = ", ".join(f"{item.address} {item.name}" for item in devices if (item.name or "").startswith(FARDRIVER_NAME_PREFIX))
   raise SerialGetError(f"FarDriver BLE device not found: name={target_name} mac={mac}. Seen: {names}")
@@ -1630,7 +1639,7 @@ async def fardriver_ble_loop(mac, controller_key='master'):
       with FARDRIVER_BLE_CONNECT_LOCK:
         device = await find_fardriver_device(mac, target_name, controller_key)
         print(f"FarDriver {controller_key}: BLE connect {device.address} {device.name}", flush=True)
-        client = BleakClient(device, timeout=20.0)
+        client = BleakClient(device, timeout=FARDRIVER_CONNECT_TIMEOUT)
         await client.connect()
 
       try:
@@ -1663,7 +1672,7 @@ async def fardriver_ble_loop(mac, controller_key='master'):
           pass
     except Exception as exc:
       print(f"FarDriver {controller_key}: BLE reconnect reason: {exc}", flush=True)
-      await asyncio.sleep(2.0)
+      await asyncio.sleep(FARDRIVER_RECONNECT_DELAY)
 
 def read_fardriver_ble(mac, controller_key='master'):
   target_name = FARDRIVER_MASTER_NAME if controller_key == "master" else FARDRIVER_SLAVE_NAME
