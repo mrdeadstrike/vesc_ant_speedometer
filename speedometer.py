@@ -57,6 +57,7 @@ FARDRIVER_SLAVE_MAC = os.environ.get("FARDRIVER_SLAVE_MAC", "").strip()
 FARDRIVER_SERVICE_UUID = os.environ.get("FARDRIVER_SERVICE_UUID", "0000ffe0-0000-1000-8000-00805f9b34fb")
 FARDRIVER_NOTIFY_UUID = os.environ.get("FARDRIVER_NOTIFY_UUID", "0000ffe1-0000-1000-8000-00805f9b34fb")
 FARDRIVER_WRITE_UUID = os.environ.get("FARDRIVER_WRITE_UUID", FARDRIVER_NOTIFY_UUID)
+FARDRIVER_NAME_PREFIX = os.environ.get("FARDRIVER_NAME_PREFIX", "YuanQuFOC")
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -1486,7 +1487,7 @@ def read_fardriver_serial(ser, controller_key='master'):
 
 async def fardriver_ble_loop(mac, controller_key='master'):
   try:
-    from bleak import BleakClient
+    from bleak import BleakClient, BleakScanner
   except Exception as exc:
     print(f"FarDriver {controller_key}: bleak не установлен ({exc}). Установи: pip install --user bleak", flush=True)
     return
@@ -1524,8 +1525,26 @@ async def fardriver_ble_loop(mac, controller_key='master'):
           last_frame_at = time.time()
 
     try:
-      print(f"FarDriver {controller_key}: BLE connect {mac}", flush=True)
-      async with BleakClient(mac, timeout=12.0) as client:
+      print(f"FarDriver {controller_key}: BLE scan/connect {mac}", flush=True)
+      device = await BleakScanner.find_device_by_address(mac, timeout=12.0)
+      if device is None:
+        devices = await BleakScanner.discover(timeout=8.0)
+        expected_prefix = "E0:" if controller_key == "master" else "C0:"
+        candidates = [
+          item for item in devices
+          if (item.address or "").upper() == mac.upper()
+          or (
+            (item.name or "").startswith(FARDRIVER_NAME_PREFIX)
+            and (item.address or "").upper().startswith(expected_prefix)
+          )
+        ]
+        if candidates:
+          device = candidates[0]
+      if device is None:
+        raise SerialGetError(f"FarDriver BLE device not found: {mac}")
+
+      print(f"FarDriver {controller_key}: BLE connect {device.address} {device.name}", flush=True)
+      async with BleakClient(device, timeout=20.0) as client:
         print(f"FarDriver {controller_key}: BLE connected", flush=True)
         await client.start_notify(notify_uuid, on_notify)
         print(f"FarDriver {controller_key}: notify {notify_uuid}", flush=True)
