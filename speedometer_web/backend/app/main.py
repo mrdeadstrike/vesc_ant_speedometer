@@ -4,6 +4,7 @@ import asyncio
 import glob
 import math
 import os
+import subprocess
 import struct
 import sys
 import threading
@@ -24,10 +25,82 @@ SLAVE_CAN_ID = 15
 POLE_PAIRS = 15
 COMM_GET_VALUES = PACKET_INDEX_FOR_VESC
 DEFAULT_VESC_SERIAL_TIMEOUT = 0.5
+DEFAULT_FARDRIVER_SERIAL_TIMEOUT = 0.2
+
+FARDRIVER_FLASH_READ_ADDR = [
+    0xE2,
+    0xE8,
+    0xEE,
+    0x00,
+    0x06,
+    0x0C,
+    0x12,
+    0xE2,
+    0xE8,
+    0xEE,
+    0x18,
+    0x1E,
+    0x24,
+    0x2A,
+    0xE2,
+    0xE8,
+    0xEE,
+    0x30,
+    0x5D,
+    0x63,
+    0x69,
+    0xE2,
+    0xE8,
+    0xEE,
+    0x7C,
+    0x82,
+    0x88,
+    0x8E,
+    0xE2,
+    0xE8,
+    0xEE,
+    0x94,
+    0x9A,
+    0xA0,
+    0xA6,
+    0xE2,
+    0xE8,
+    0xEE,
+    0xAC,
+    0xB2,
+    0xB8,
+    0xBE,
+    0xE2,
+    0xE8,
+    0xEE,
+    0xC4,
+    0xCA,
+    0xD0,
+    0xE2,
+    0xE8,
+    0xEE,
+    0xD6,
+    0xDC,
+    0xF4,
+    0xFA,
+]
 
 
 class SerialProtocolError(Exception):
     pass
+
+
+def detect_raspberry_pi() -> bool:
+    if sys.platform != "linux":
+        return False
+    try:
+        model_path = Path("/proc/device-tree/model")
+        if not model_path.exists():
+            return False
+        model = model_path.read_text(encoding="utf-8", errors="ignore").lower()
+        return "raspberry pi" in model
+    except Exception:
+        return False
 
 
 def crc16(data: bytes) -> int:
@@ -111,12 +184,164 @@ def parse_temperatures(packet: bytes) -> dict[str, int]:
     }
 
 
+def pack_fardriver_old_command(command: int, sub_command: int, value_1: int = 0, value_2: int = 0) -> bytes:
+    packet = bytearray(
+        [
+            0xAA,
+            command & 0xFF,
+            (~command) & 0xFF,
+            sub_command & 0xFF,
+            value_1 & 0xFF,
+            value_2 & 0xFF,
+            0,
+            0,
+        ]
+    )
+    checksum = sum(packet[:6]) & 0xFF
+    packet[6] = checksum
+    packet[7] = (~checksum) & 0xFF
+    return bytes(packet)
+
+
+def _read_i16_le(data: bytes, offset: int) -> int:
+    return struct.unpack_from("<h", data, offset)[0]
+
+
+def _read_u16_le(data: bytes, offset: int) -> int:
+    return struct.unpack_from("<H", data, offset)[0]
+
+
+def _read_u24_be(data: bytes, offset: int) -> int:
+    return (data[offset] << 16) | (data[offset + 1] << 8) | data[offset + 2]
+
+
+class FardriverDecoder:
+    """
+    FarDriver sends rotating 16-byte status records over the same UART stream that
+    the Bluetooth dongle exposes. The public reverse-engineering notes map ids to
+    memory addresses; this decoder keeps the latest useful values and emits them
+    in the shape expected by TelemetryState.
+    """
+
+    def __init__(self, speed_source: str = "frame"):
+        self.speed_source = speed_source
+        self.speed_kmh: float | None = None
+        self.frame_speed_kmh: float | None = None
+        self.wheel_speed_kmh: float | None = None
+        self.battery_current: float | None = None
+        self.phase_current: float | None = None
+        self.duty_cycle: float | None = None
+        self.input_voltage: float | None = None
+        self.rpm: float | None = None
+        self.mos_temp: float | None = None
+        self.motor_temp: float | None = None
+        self._measure_speed: int | None = None
+        self._wheel_ratio: int | None = None
+        self._wheel_radius: int | None = None
+        self._wheel_width: int | None = None
+        self._rate_ratio: int | None = None
+
+    def apply_frame(self, frame: bytes) -> dict[str, float | None] | None:
+        if len(frame) != 16 or frame[0] != 0xAA:
+            return None
+
+        flags = frame[1] >> 6
+        frame_id = frame[1] & 0x3F
+        if flags != 2:
+            return None
+
+        data = frame[2:14]
+        if frame_id == 0x37:
+            self._apply_gather_frame(data)
+        elif frame_id < len(FARDRIVER_FLASH_READ_ADDR):
+            self._apply_rotating_frame(FARDRIVER_FLASH_READ_ADDR[frame_id], data)
+        else:
+            return None
+
+        self._select_speed()
+        return self.snapshot()
+
+    def _apply_gather_frame(self, data: bytes) -> None:
+        # 010 Editor template: speed / 1000, current / 50 A, voltage / 5 V.
+        _, speed_raw, current_raw, voltage_raw, _, modulation_raw, _ = struct.unpack("<hhhhhBB", data)
+        self.frame_speed_kmh = max(0.0, speed_raw / 1000.0)
+        self.battery_current = current_raw / 50.0
+        self.input_voltage = voltage_raw / 5.0
+        self.duty_cycle = max(0.0, min(100.0, modulation_raw / 0.2))
+
+    def _apply_rotating_frame(self, addr: int, data: bytes) -> None:
+        if addr == 0xE2:
+            self.duty_cycle = max(0.0, min(100.0, data[4] * 100.0 / 128.0))
+            self._measure_speed = _read_u16_le(data, 6)
+            self.rpm = float(self._measure_speed)
+            self._recompute_wheel_speed()
+        elif addr == 0xE8:
+            self.input_voltage = _read_i16_le(data, 0) / 10.0
+            self.battery_current = _read_i16_le(data, 4) / 4.0
+        elif addr == 0xEE:
+            phase_a = self._phase_current_from_raw(_read_u24_be(data, 4))
+            phase_c = self._phase_current_from_raw(_read_u24_be(data, 7))
+            self.phase_current = max(phase_a, phase_c)
+            volts = _read_i16_le(data, 10) / 16.0
+            if volts > 0:
+                self.input_voltage = volts
+        elif addr == 0xD0:
+            self._wheel_ratio = data[4]
+            self._wheel_radius = data[5]
+            self._wheel_width = data[7]
+            self._rate_ratio = _read_u16_le(data, 8)
+            self._recompute_wheel_speed()
+        elif addr == 0xD6:
+            self.mos_temp = float(_read_i16_le(data, 10))
+        elif addr == 0xF4:
+            self.motor_temp = float(_read_i16_le(data, 0))
+
+    @staticmethod
+    def _phase_current_from_raw(raw: int) -> float:
+        return 1.953125 * math.sqrt(max(0, raw))
+
+    def _recompute_wheel_speed(self) -> None:
+        if not all(
+            value is not None
+            for value in [self._measure_speed, self._wheel_ratio, self._wheel_radius, self._wheel_width, self._rate_ratio]
+        ):
+            return
+        if not self._rate_ratio:
+            return
+
+        speed_factor = 0.00376991136 * (
+            float(self._wheel_radius) * 1270.0 + float(self._wheel_width) * float(self._wheel_ratio)
+        )
+        self.wheel_speed_kmh = max(0.0, float(self._measure_speed) * speed_factor / float(self._rate_ratio))
+
+    def _select_speed(self) -> None:
+        if self.speed_source == "wheel":
+            self.speed_kmh = self.wheel_speed_kmh if self.wheel_speed_kmh is not None else self.frame_speed_kmh
+        else:
+            self.speed_kmh = self.frame_speed_kmh if self.frame_speed_kmh is not None else self.wheel_speed_kmh
+
+    def snapshot(self) -> dict[str, float | None]:
+        return {
+            "speed_kmh": self.speed_kmh,
+            "battery_current": self.battery_current,
+            "phase_current": self.phase_current,
+            "duty_cycle": self.duty_cycle,
+            "input_voltage": self.input_voltage,
+            "rpm": self.rpm,
+            "mos_temp": self.mos_temp,
+            "motor_temp": self.motor_temp,
+        }
+
+
 class TelemetryEngine:
     def __init__(self, state: TelemetryState):
         self.state = state
         self.stop_event = threading.Event()
         self.threads: list[threading.Thread] = []
         self.is_macos = sys.platform == "darwin"
+        self.is_raspberry = detect_raspberry_pi()
+        self.force_mock_mode = False
+        self.hardware_enabled = True
 
         self.vesc_port_override = os.getenv("VESC_PORT_OVERRIDE", "/tmp/vesc-ble")
         self.bms_port_override = os.getenv("BMS_PORT_OVERRIDE", "/tmp/bms-ble")
@@ -127,7 +352,9 @@ class TelemetryEngine:
 
     def start(self) -> None:
         force_mock = self.debug_mock_mode in {"1", "true", "on", "yes"} or self.is_macos
+        self.force_mock_mode = force_mock
         start_hw = not force_mock
+        self.hardware_enabled = start_hw
 
         self.threads = []
         if start_hw:
@@ -147,6 +374,14 @@ class TelemetryEngine:
         )
         for thread in self.threads:
             thread.start()
+
+    def runtime_meta(self) -> dict[str, bool]:
+        can_shutdown = self.is_raspberry and (not self.force_mock_mode)
+        return {
+            "is_raspberry": self.is_raspberry,
+            "mock_mode": self.force_mock_mode,
+            "can_shutdown": can_shutdown,
+        }
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -435,7 +670,23 @@ async def health() -> dict[str, bool]:
 
 @app.get("/api/telemetry")
 async def telemetry_snapshot() -> dict:
-    return app.state.telemetry_state.snapshot()
+    payload = app.state.telemetry_state.snapshot()
+    payload.setdefault("status", {}).update(app.state.telemetry_engine.runtime_meta())
+    return payload
+
+
+@app.post("/api/system/shutdown")
+async def system_shutdown() -> dict:
+    engine: TelemetryEngine = app.state.telemetry_engine
+    meta = engine.runtime_meta()
+    if not meta["can_shutdown"]:
+        return {"ok": False, "performed": False, "reason": "shutdown disabled in this mode"}
+
+    try:
+        subprocess.Popen(["sudo", "shutdown", "now"])
+        return {"ok": True, "performed": True}
+    except Exception as exc:
+        return {"ok": False, "performed": False, "reason": str(exc)}
 
 
 @app.websocket("/ws")
@@ -446,6 +697,7 @@ async def telemetry_ws(websocket: WebSocket) -> None:
     try:
         while True:
             payload = app.state.telemetry_state.snapshot()
+            payload.setdefault("status", {}).update(app.state.telemetry_engine.runtime_meta())
             await websocket.send_json(payload)
             await asyncio.sleep(interval)
     except WebSocketDisconnect:

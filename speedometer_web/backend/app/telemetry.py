@@ -9,6 +9,7 @@ from typing import Any
 CELL_COUNT = 20
 WHEEL_DIAMETER_M = 0.28
 WHEEL_CIRCUMFERENCE_M = 3.141592653589793 * WHEEL_DIAMETER_M
+ACCEL_MEASURE_TIMEOUT_S = 25.0
 
 # Таблица процента заряда из исходного speedometer.py (для 20s батареи).
 _PER_CELL_VOLTAGE_PERCENT_TABLE = [
@@ -45,6 +46,7 @@ class TelemetryState:
                 "duty": 0.0,
                 "temp": 0,
                 "temp_motor": 0,
+                "rpm": 0.0,
             },
             "slave": {
                 "motor_current": 0.0,
@@ -52,6 +54,7 @@ class TelemetryState:
                 "duty": 0.0,
                 "temp": 0,
                 "temp_motor": 0,
+                "rpm": 0.0,
             },
             "battery_voltage_vesc": 0.0,
             "bms_voltage": 0.0,
@@ -87,13 +90,20 @@ class TelemetryState:
                 "best_0_60_s": None,
             },
             "accel": {
+                "ready": True,
                 "measuring": False,
                 "start_ts": None,
+                "elapsed_s": 0.0,
+                "current_0_60_s": None,
+                "current_0_100_s": None,
+                "last_0_60_s": None,
+                "last_0_100_s": None,
                 "best_0_60_s": None,
             },
             "last_trip_tick_ts": now,
             "last_vesc_update_ts": 0.0,
             "last_bms_update_ts": 0.0,
+            "controller_type": "vesc",
         }
 
     def _load_main_data(self) -> None:
@@ -139,8 +149,10 @@ class TelemetryState:
             master["duty"] = duty_cycle
             master["temp"] = int(mos_temp)
             master["temp_motor"] = int(motor_temp)
+            master["rpm"] = wheel_rpm
             self._state["battery_voltage_vesc"] = input_voltage
             self._state["last_vesc_update_ts"] = time.time()
+            self._state["controller_type"] = "vesc"
 
             self._update_trip_locked()
 
@@ -160,6 +172,64 @@ class TelemetryState:
             slave["temp"] = int(mos_temp)
             slave["temp_motor"] = int(motor_temp)
             self._state["last_vesc_update_ts"] = time.time()
+
+    def update_fardriver(
+        self,
+        speed_kmh: float | None,
+        battery_current: float | None,
+        phase_current: float | None,
+        duty_cycle: float | None,
+        input_voltage: float | None,
+        rpm: float | None,
+        mos_temp: float | None,
+        motor_temp: float | None,
+    ) -> None:
+        with self._lock:
+            if speed_kmh is not None:
+                self._state["speed_kmh"] = max(0.0, speed_kmh)
+
+            master = self._state["master"]
+            if phase_current is not None:
+                master["motor_current"] = phase_current
+            if battery_current is not None:
+                master["battery_current"] = battery_current
+            if duty_cycle is not None:
+                master["duty"] = duty_cycle
+            if mos_temp is not None:
+                master["temp"] = int(mos_temp)
+            if motor_temp is not None:
+                master["temp_motor"] = int(motor_temp)
+            if rpm is not None:
+                master["rpm"] = rpm
+
+            slave = self._state["slave"]
+            slave["motor_current"] = 0.0
+            slave["battery_current"] = 0.0
+            slave["duty"] = 0.0
+            slave["temp"] = 0
+            slave["temp_motor"] = 0
+            slave["rpm"] = 0.0
+
+            if input_voltage is not None:
+                self._state["battery_voltage_vesc"] = input_voltage
+                if self._state["bms_voltage"] <= 0.0 or (time.time() - self._state["last_bms_update_ts"]) > 2.5:
+                    self._state["bms_voltage"] = input_voltage
+
+            if battery_current is not None and self._state["bms_voltage"] > 0.0:
+                if (time.time() - self._state["last_bms_update_ts"]) > 2.5:
+                    self._state["bms_current"] = battery_current
+                    self._state["power"] = int(self._state["bms_voltage"] * battery_current)
+
+            if input_voltage is not None and battery_current is not None and abs(battery_current) < 0.5:
+                self._state["v_without_load"] = input_voltage
+
+            if self._state["v_without_load"] > 0.0 and self._state["bms_voltage"] > 0.0:
+                self._state["voltage_down"] = self._state["bms_voltage"] - self._state["v_without_load"]
+
+            self._state["last_vesc_update_ts"] = time.time()
+            self._state["controller_type"] = "fardriver"
+            self._update_battery_level_locked(force=True)
+            self._update_trip_locked()
 
     def update_bms(
         self,
@@ -191,7 +261,7 @@ class TelemetryState:
         """
         p = max(0.0, min(1.0, float(phase)))
         with self._lock:
-            speed = 90.0 * p
+            speed = 114.0 * p
             self._state["speed_kmh"] = speed
 
             self._state["master"]["motor_current"] = 200.0 * p
@@ -200,6 +270,8 @@ class TelemetryState:
             self._state["slave"]["battery_current"] = 40.0 * (1.0 - p)
             self._state["master"]["duty"] = min(100.0, 95.0 * p)
             self._state["slave"]["duty"] = min(100.0, 90.0 * (1.0 - p))
+            self._state["master"]["rpm"] = 5000.0 * p
+            self._state["slave"]["rpm"] = 4500.0 * (1.0 - p)
 
             self._state["master"]["temp_motor"] = int(45 + 30 * p)
             self._state["slave"]["temp_motor"] = int(43 + 28 * (1.0 - p))
@@ -272,6 +344,53 @@ class TelemetryState:
         trip["motor1_max_temp"] = max(trip["motor1_max_temp"], self._state["slave"]["temp_motor"])
         trip["motor2_max_temp"] = max(trip["motor2_max_temp"], self._state["master"]["temp_motor"])
 
+        self._update_accel_locked(now, speed)
+
+    def _update_accel_locked(self, now: float, speed_kmh: float) -> None:
+        accel = self._state["accel"]
+        trip = self._state["trip"]
+
+        if accel["ready"] and speed_kmh > 0.5:
+            accel["measuring"] = True
+            accel["ready"] = False
+            accel["start_ts"] = now
+            accel["elapsed_s"] = 0.0
+            accel["current_0_60_s"] = None
+            accel["current_0_100_s"] = None
+
+        if accel["measuring"] and accel["start_ts"] is not None:
+            elapsed = max(0.0, now - float(accel["start_ts"]))
+            accel["elapsed_s"] = elapsed
+
+            if accel["current_0_60_s"] is None and speed_kmh >= 60.0:
+                accel["current_0_60_s"] = elapsed
+                accel["last_0_60_s"] = elapsed
+                best = accel["best_0_60_s"]
+                if best is None or elapsed < best:
+                    accel["best_0_60_s"] = elapsed
+                    trip["best_0_60_s"] = elapsed
+                elif trip["best_0_60_s"] is None:
+                    trip["best_0_60_s"] = best
+
+            if accel["current_0_60_s"] is not None and accel["current_0_100_s"] is None and speed_kmh >= 100.0:
+                accel["current_0_100_s"] = elapsed
+                accel["last_0_100_s"] = elapsed
+                accel["measuring"] = False
+                accel["start_ts"] = None
+                accel["elapsed_s"] = elapsed
+
+            if elapsed > ACCEL_MEASURE_TIMEOUT_S:
+                accel["measuring"] = False
+                accel["start_ts"] = None
+
+        if speed_kmh <= 0.5:
+            accel["ready"] = True
+            accel["measuring"] = False
+            accel["start_ts"] = None
+            accel["elapsed_s"] = 0.0
+            accel["current_0_60_s"] = None
+            accel["current_0_100_s"] = None
+
     def _update_cell_stats_locked(self) -> None:
         cells = self._state["cells_v"]
         if not cells:
@@ -336,12 +455,14 @@ class TelemetryState:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "speed_kmh": round(float(state["speed_kmh"]), 2),
                 "power_w": int(state["power"]),
+                "bms_current_a": round(float(state["bms_current"]), 1),
                 "master": {
                     "motor_current": round(float(state["master"]["motor_current"]), 2),
                     "battery_current": round(float(state["master"]["battery_current"]), 2),
                     "duty": round(float(state["master"]["duty"]), 2),
                     "temp": int(state["master"]["temp"]),
                     "temp_motor": int(state["master"]["temp_motor"]),
+                    "rpm": round(float(state["master"]["rpm"]), 1),
                 },
                 "slave": {
                     "motor_current": round(float(state["slave"]["motor_current"]), 2),
@@ -349,6 +470,7 @@ class TelemetryState:
                     "duty": round(float(state["slave"]["duty"]), 2),
                     "temp": int(state["slave"]["temp"]),
                     "temp_motor": int(state["slave"]["temp_motor"]),
+                    "rpm": round(float(state["slave"]["rpm"]), 1),
                 },
                 "battery": {
                     "voltage_v": round(float(state["bms_voltage"]), 2),
@@ -381,9 +503,25 @@ class TelemetryState:
                     "max_power_w": int(trip["max_power_w"]),
                     "motor1_max_temp": int(trip["motor1_max_temp"]),
                     "motor2_max_temp": int(trip["motor2_max_temp"]),
+                    "best_0_60_s": round(float(trip["best_0_60_s"]), 2) if trip["best_0_60_s"] is not None else None,
+                },
+                "accel": {
+                    "measuring": bool(state["accel"]["measuring"]),
+                    "elapsed_s": round(float(state["accel"]["elapsed_s"]), 2),
+                    "current_0_60_s": round(float(state["accel"]["current_0_60_s"]), 2)
+                    if state["accel"]["current_0_60_s"] is not None
+                    else None,
+                    "current_0_100_s": round(float(state["accel"]["current_0_100_s"]), 2)
+                    if state["accel"]["current_0_100_s"] is not None
+                    else None,
+                    "last_0_60_s": round(float(state["accel"]["last_0_60_s"]), 2) if state["accel"]["last_0_60_s"] is not None else None,
+                    "last_0_100_s": round(float(state["accel"]["last_0_100_s"]), 2) if state["accel"]["last_0_100_s"] is not None else None,
+                    "best_0_60_s": round(float(state["accel"]["best_0_60_s"]), 2) if state["accel"]["best_0_60_s"] is not None else None,
                 },
                 "status": {
                     "vesc_connected": vesc_connected,
+                    "controller_connected": vesc_connected,
+                    "controller_type": state["controller_type"],
                     "bms_lost": bms_lost,
                     "last_vesc_update_ms": int(max(0.0, now - state["last_vesc_update_ts"]) * 1000),
                     "last_bms_update_ms": int(max(0.0, now - state["last_bms_update_ts"]) * 1000),

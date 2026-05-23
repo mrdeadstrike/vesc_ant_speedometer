@@ -41,8 +41,13 @@ CELL_COUNT = 20
 
 # Укажи порт вручную, если нужно (например "/dev/rfcomm0")
 VESC_PORT_OVERRIDE = "/tmp/vesc-ble"
+FARDRIVER_PORT_OVERRIDE = os.environ.get("FARDRIVER_SERIAL_PORT", "/tmp/fardriver-ble")
+FARDRIVER_MASTER_PORT = os.environ.get("FARDRIVER_MASTER_PORT", "/tmp/fardriver-master-ble")
+FARDRIVER_SLAVE_PORT = os.environ.get("FARDRIVER_SLAVE_PORT", "/tmp/fardriver-slave-ble")
 BMS_PORT_OVERRIDE = "/tmp/bms-ble"
 DEFAULT_VESC_SERIAL_TIMEOUT = 0.5
+DEFAULT_FARDRIVER_SERIAL_TIMEOUT = 0.2
+CONTROLLER_TYPE = os.environ.get("CONTROLLER_TYPE", "fardriver").strip().lower()
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -121,6 +126,7 @@ PREV_VALS = {
   'external_temp_1_get_last_time': time.time(),
   'external_temp_2_get_last_time': time.time(),
   'external_temp_3_get_last_time': time.time(),
+  'bms_last_update': 0,
 }
 
 EXTERNAL_TEMP_KEYS = [
@@ -202,8 +208,8 @@ except:
 
 data = {
   'speed': 0.0,
-  'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0, 'temp_motor': 0},
-  'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0, 'temp_motor': 0},
+  'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0, 'temp_motor': 0, 'rpm': 0},
+  'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0, 'temp_motor': 0, 'rpm': 0},
   'battery_voltage': 0,
   'v_without_nagruzka': 0,
   'battery_level': 0,
@@ -231,6 +237,12 @@ data = {
   'power': 0,
   'bms_voltage': 0,
   'voltage_down': 0,
+}
+
+FARDRIVER_LATEST_LOCK = threading.Lock()
+FARDRIVER_LATEST = {
+  'master': {},
+  'slave': {},
 }
 
 data_trip = {
@@ -957,6 +969,9 @@ def _speed_isclose(a, b):
 
 def queue_speed_limit_erpm(target_erpm, display_speed_kmh, force=False, reason=None):
   global current_speed_limit_kmh, current_speed_limit_erpm
+  if CONTROLLER_TYPE == "fardriver":
+    print("FarDriver: VESC-команда ограничения скорости не отправляется", flush=True)
+    return
   if target_erpm is None:
     return
   #if (
@@ -1227,6 +1242,239 @@ def pack_packet_slave(payload):
   crc = struct.pack('>H', crc16_slave(payload))
   return start + length + payload + crc + end
 
+FARDRIVER_FLASH_READ_ADDR = [
+  0xE2, 0xE8, 0xEE, 0x00, 0x06, 0x0C, 0x12,
+  0xE2, 0xE8, 0xEE, 0x18, 0x1E, 0x24, 0x2A,
+  0xE2, 0xE8, 0xEE, 0x30, 0x5D, 0x63, 0x69,
+  0xE2, 0xE8, 0xEE, 0x7C, 0x82, 0x88, 0x8E,
+  0xE2, 0xE8, 0xEE, 0x94, 0x9A, 0xA0, 0xA6,
+  0xE2, 0xE8, 0xEE, 0xAC, 0xB2, 0xB8, 0xBE,
+  0xE2, 0xE8, 0xEE, 0xC4, 0xCA, 0xD0,
+  0xE2, 0xE8, 0xEE, 0xD6, 0xDC, 0xF4, 0xFA,
+]
+
+def read_i16_le(raw, offset):
+  return struct.unpack_from('<h', raw, offset)[0]
+
+def read_u16_le(raw, offset):
+  return struct.unpack_from('<H', raw, offset)[0]
+
+def read_u24_be(raw, offset):
+  return (raw[offset] << 16) | (raw[offset + 1] << 8) | raw[offset + 2]
+
+def fardriver_old_command(command, sub_command, value_1=0, value_2=0):
+  packet = bytearray([
+    0xAA,
+    command & 0xFF,
+    (~command) & 0xFF,
+    sub_command & 0xFF,
+    value_1 & 0xFF,
+    value_2 & 0xFF,
+    0,
+    0,
+  ])
+  crc = sum(packet[:6]) & 0xFF
+  packet[6] = crc
+  packet[7] = (~crc) & 0xFF
+  return bytes(packet)
+
+def fardriver_phase_current(raw_value):
+  return 1.953125 * math.sqrt(max(0, raw_value))
+
+class FarDriverTelemetry:
+  def __init__(self, controller_key='master'):
+    self.controller_key = controller_key
+    self.speed_source = os.environ.get("FARDRIVER_SPEED_SOURCE", "frame").strip().lower()
+    self.speed_kmh = None
+    self.frame_speed_kmh = None
+    self.wheel_speed_kmh = None
+    self.battery_current = None
+    self.phase_current = None
+    self.duty = None
+    self.voltage = None
+    self.rpm = None
+    self.mos_temp = None
+    self.motor_temp = None
+    self.measure_speed = None
+    self.wheel_ratio = None
+    self.wheel_radius = None
+    self.wheel_width = None
+    self.rate_ratio = None
+
+  def apply_frame(self, frame):
+    if len(frame) != 16 or frame[0] != 0xAA:
+      return False
+
+    flags = frame[1] >> 6
+    frame_id = frame[1] & 0x3F
+    if flags != 2:
+      return False
+
+    payload = frame[2:14]
+    if frame_id == 0x37:
+      self.apply_gather_payload(payload)
+    elif frame_id < len(FARDRIVER_FLASH_READ_ADDR):
+      self.apply_rotating_payload(FARDRIVER_FLASH_READ_ADDR[frame_id], payload)
+    else:
+      return False
+
+    self.select_speed()
+    self.flush_to_data()
+    return True
+
+  def apply_gather_payload(self, payload):
+    # Реверс из fardriver.bt: Speed/1000, Curr/50A, Vol/5V, Mod/0.2.
+    _, speed_raw, current_raw, voltage_raw, _, modulation_raw, _ = struct.unpack('<hhhhhBB', payload)
+    self.frame_speed_kmh = max(0.0, speed_raw / 1000.0)
+    self.battery_current = current_raw / 50.0
+    self.voltage = voltage_raw / 5.0
+    self.duty = max(0.0, min(100.0, modulation_raw / 0.2))
+
+  def apply_rotating_payload(self, addr, payload):
+    if addr == 0xE2:
+      self.duty = max(0.0, min(100.0, payload[4] * 100.0 / 128.0))
+      self.measure_speed = read_u16_le(payload, 6)
+      self.rpm = float(self.measure_speed)
+      self.recompute_wheel_speed()
+    elif addr == 0xE8:
+      self.voltage = read_i16_le(payload, 0) / 10.0
+      self.battery_current = read_i16_le(payload, 4) / 4.0
+    elif addr == 0xEE:
+      phase_a = fardriver_phase_current(read_u24_be(payload, 4))
+      phase_c = fardriver_phase_current(read_u24_be(payload, 7))
+      self.phase_current = max(phase_a, phase_c)
+      volts = read_i16_le(payload, 10) / 16.0
+      if volts > 0:
+        self.voltage = volts
+    elif addr == 0xD0:
+      self.wheel_ratio = payload[4]
+      self.wheel_radius = payload[5]
+      self.wheel_width = payload[7]
+      self.rate_ratio = read_u16_le(payload, 8)
+      self.recompute_wheel_speed()
+    elif addr == 0xD6:
+      self.mos_temp = float(read_i16_le(payload, 10))
+    elif addr == 0xF4:
+      self.motor_temp = float(read_i16_le(payload, 0))
+
+  def recompute_wheel_speed(self):
+    if None in (self.measure_speed, self.wheel_ratio, self.wheel_radius, self.wheel_width, self.rate_ratio):
+      return
+    if not self.rate_ratio:
+      return
+    speed_factor = 0.00376991136 * (
+      float(self.wheel_radius) * 1270.0 + float(self.wheel_width) * float(self.wheel_ratio)
+    )
+    self.wheel_speed_kmh = max(0.0, float(self.measure_speed) * speed_factor / float(self.rate_ratio))
+
+  def select_speed(self):
+    if self.speed_source == "wheel":
+      self.speed_kmh = self.wheel_speed_kmh if self.wheel_speed_kmh is not None else self.frame_speed_kmh
+    else:
+      self.speed_kmh = self.frame_speed_kmh if self.frame_speed_kmh is not None else self.wheel_speed_kmh
+
+  def flush_to_data(self):
+    now = time.time()
+    snapshot = {
+      'speed_kmh': self.speed_kmh,
+      'battery_current': self.battery_current,
+      'phase_current': self.phase_current,
+      'duty': self.duty,
+      'voltage': self.voltage,
+      'rpm': self.rpm,
+      'mos_temp': self.mos_temp,
+      'motor_temp': self.motor_temp,
+      'updated_at': now,
+    }
+
+    with FARDRIVER_LATEST_LOCK:
+      FARDRIVER_LATEST[self.controller_key] = snapshot
+      fresh = {
+        key: value
+        for key, value in FARDRIVER_LATEST.items()
+        if value.get('updated_at') and now - value['updated_at'] <= 3
+      }
+
+      for key in ['master', 'slave']:
+        item = fresh.get(key, FARDRIVER_LATEST.get(key, {}))
+        if item.get('phase_current') is not None:
+          data[key]['motor_current'] = item['phase_current']
+        if item.get('battery_current') is not None:
+          data[key]['battery_current'] = item['battery_current']
+        if item.get('duty') is not None:
+          data[key]['duty'] = item['duty']
+        if item.get('mos_temp') is not None:
+          data[key]['temp'] = int(item['mos_temp'])
+        if item.get('motor_temp') is not None:
+          data[key]['temp_motor'] = int(item['motor_temp'])
+        if item.get('rpm') is not None:
+          data[key]['rpm'] = item['rpm']
+
+      speeds = [item['speed_kmh'] for item in fresh.values() if item.get('speed_kmh') is not None]
+      if speeds:
+        data['speed'] = max(speeds)
+
+      voltages = [item['voltage'] for item in fresh.values() if item.get('voltage') is not None]
+      battery_currents = [item['battery_current'] for item in fresh.values() if item.get('battery_current') is not None]
+      if voltages:
+        voltage = sum(voltages) / len(voltages)
+        data['battery_voltage'] = voltage
+        if data.get('bms_voltage', 0) <= 0 or now - PREV_VALS.get('bms_last_update', 0) > 3:
+          data['bms_voltage'] = voltage
+
+        if battery_currents:
+          total_battery_current = sum(battery_currents)
+          if now - PREV_VALS.get('bms_last_update', 0) > 3:
+            data['bms_current'] = total_battery_current
+            data['power'] = int(voltage * total_battery_current)
+          if abs(total_battery_current) < 0.5:
+            data['v_without_nagruzka'] = voltage
+          if data.get('v_without_nagruzka', 0) > 0:
+            data['voltage_down'] = voltage - data['v_without_nagruzka']
+
+def read_fardriver_serial(ser, controller_key='master'):
+  telemetry = FarDriverTelemetry(controller_key)
+  buffer = bytearray()
+  status_poll = fardriver_old_command(0x13, 0x07)
+  send_status_poll = os.environ.get("FARDRIVER_STATUS_POLL", "1").strip().lower() not in {"0", "false", "off", "no"}
+  next_poll_at = 0.0
+  last_frame_at = time.time()
+
+  ser.reset_input_buffer()
+  ser.reset_output_buffer()
+  print(f"Буферы FarDriver {controller_key} очищены, начинаем чтение потока", flush=True)
+
+  while True:
+    now = time.time()
+    if send_status_poll and now >= next_poll_at:
+      ser.write(status_poll)
+      ser.flush()
+      next_poll_at = now + 2.0
+
+    chunk = ser.read(64)
+    if chunk:
+      buffer.extend(chunk)
+    elif now - last_frame_at > 8:
+      raise SerialGetError("FarDriver timeout")
+
+    while len(buffer) >= 16:
+      try:
+        start = buffer.index(0xAA)
+      except ValueError:
+        buffer.clear()
+        break
+      if start:
+        del buffer[:start]
+      if len(buffer) < 16:
+        break
+      candidate = bytes(buffer[:16])
+      if (candidate[1] >> 6) != 2:
+        del buffer[0]
+        continue
+      del buffer[:16]
+      if telemetry.apply_frame(candidate):
+        last_frame_at = time.time()
+
 
 ######### CONTROLLER READ ##########
 def read_serial(ser):
@@ -1383,6 +1631,58 @@ def iter_vesc_port_candidates(explicit_port=None):
   if fallback not in seen:
     yield fallback
 
+def iter_fardriver_port_candidates(explicit_port=None, controller_key='master'):
+  seen = set()
+
+  def emit(candidate, reason=None):
+    if candidate and candidate not in seen:
+      if reason:
+        print(f"Используем FarDriver порт {candidate} ({reason})", flush=True)
+      seen.add(candidate)
+      return candidate
+    return None
+
+  if controller_key == 'slave':
+    configured = [
+      (explicit_port, "параметр"),
+      (os.environ.get("FARDRIVER_SLAVE_PORT"), "FARDRIVER_SLAVE_PORT"),
+      (FARDRIVER_SLAVE_PORT, "FARDRIVER_SLAVE_PORT default"),
+      ("/tmp/fardriver-slave-ble", "default"),
+    ]
+  else:
+    configured = [
+      (explicit_port, "параметр"),
+      (os.environ.get("FARDRIVER_MASTER_PORT"), "FARDRIVER_MASTER_PORT"),
+      (FARDRIVER_MASTER_PORT, "FARDRIVER_MASTER_PORT default"),
+      (os.environ.get("FARDRIVER_SERIAL_PORT"), "FARDRIVER_SERIAL_PORT"),
+      (FARDRIVER_PORT_OVERRIDE, "FARDRIVER_PORT_OVERRIDE"),
+      ("/tmp/fardriver-master-ble", "default"),
+      ("/tmp/fardriver-ble", "совместимость со старым BLE-мостом"),
+      ("/tmp/vesc-ble", "совместимость со старым BLE-мостом"),
+    ]
+
+  for candidate, reason in configured:
+    value = emit(candidate, reason)
+    if value:
+      yield value
+
+  patterns = []
+  if IS_MAC:
+    patterns.extend(['/dev/tty.*Bluetooth*', '/dev/tty.usbserial*', '/dev/tty.usbmodem*'])
+  else:
+    patterns.extend(['/dev/rfcomm*', '/dev/ttyUSB*', '/dev/ttyS*', '/dev/ttyACM*'])
+
+  for pattern in patterns:
+    for candidate in sorted(glob.glob(pattern)):
+      value = emit(candidate, f"шаблон {pattern}")
+      if value:
+        yield value
+
+  fallback = '/dev/ttyUSB0'
+  value = emit(fallback, "fallback")
+  if value:
+    yield value
+
 
 def iter_bms_port_candidates(explicit_port=None):
   seen = set()
@@ -1423,27 +1723,32 @@ def iter_bms_port_candidates(explicit_port=None):
 
 def read_сontrollers(
                 port_name=None,
-                baudrate=115200):
+                baudrate=115200,
+                controller_key='master'):
   if IS_RASPBERY or not IS_MAC:
     while True:
       ser = None
       current_port = None
-      for candidate in iter_vesc_port_candidates(port_name):
+      is_fardriver = CONTROLLER_TYPE == "fardriver"
+      candidates = iter_fardriver_port_candidates(port_name, controller_key) if is_fardriver else iter_vesc_port_candidates(port_name)
+      current_baudrate = int(os.environ.get("FARDRIVER_BAUDRATE", "19200")) if is_fardriver else baudrate
+      current_timeout = DEFAULT_FARDRIVER_SERIAL_TIMEOUT if is_fardriver else DEFAULT_VESC_SERIAL_TIMEOUT
+      for candidate in candidates:
         print(f"Пытаемся открыть порт {candidate}", flush=True)
         try:
           ser = serial.Serial(
             candidate,
-            baudrate,
-            timeout=DEFAULT_VESC_SERIAL_TIMEOUT,
-            write_timeout=DEFAULT_VESC_SERIAL_TIMEOUT
+            current_baudrate,
+            timeout=current_timeout,
+            write_timeout=current_timeout
           )
           current_port = candidate
-          print(f"VESC port open: {candidate}", flush=True)
+          print(f"{'FarDriver' if is_fardriver else 'VESC'} port open: {candidate}", flush=True)
           break
         except Exception as e:
           print(f"Не удалось открыть порт {candidate}: {e}", flush=True)
-          if candidate == VESC_PORT_OVERRIDE:
-            print("Проверь запущен ли BLE-мост (./start_ble_bridge.sh) и присутствует ли /tmp/vesc-ble", flush=True)
+          if candidate in {VESC_PORT_OVERRIDE, FARDRIVER_PORT_OVERRIDE}:
+            print("Проверь запущен ли BLE-мост (./start_ble_bridge.sh) и присутствует ли виртуальный порт", flush=True)
           ser = None
       if ser is None:
         print("Порты не открылись, повтор через 2 секунды", flush=True)
@@ -1453,9 +1758,12 @@ def read_сontrollers(
       try:
         print("Пауза после открытия порта 0.5 c", flush=True)
         time.sleep(0.5)
-        read_serial(ser)
+        if is_fardriver:
+          read_fardriver_serial(ser, controller_key)
+        else:
+          read_serial(ser)
       except Exception as exc:
-        print(f"Ошибка чтения VESC ({current_port}): {exc}", flush=True)
+        print(f"Ошибка чтения {'FarDriver' if is_fardriver else 'VESC'} ({current_port}): {exc}", flush=True)
       finally:
         try:
           ser.close()
@@ -1463,7 +1771,19 @@ def read_сontrollers(
           ser = None
       time.sleep(2)
 
-threading.Thread(target=read_сontrollers, kwargs={"port_name": VESC_PORT_OVERRIDE}, daemon=True).start()
+if CONTROLLER_TYPE == "fardriver":
+  threading.Thread(
+    target=read_сontrollers,
+    kwargs={"port_name": FARDRIVER_MASTER_PORT, "controller_key": "master"},
+    daemon=True
+  ).start()
+  threading.Thread(
+    target=read_сontrollers,
+    kwargs={"port_name": FARDRIVER_SLAVE_PORT, "controller_key": "slave"},
+    daemon=True
+  ).start()
+else:
+  threading.Thread(target=read_сontrollers, kwargs={"port_name": VESC_PORT_OVERRIDE}, daemon=True).start()
 
 ######### BMS READ ############
 def parse_temperatures(data):
@@ -1516,6 +1836,7 @@ def read_bms_data(ser):
     data['bms_current'] = current
     data['power'] = int(total_voltage * current)
     data['bms_voltage'] = total_voltage
+    PREV_VALS['bms_last_update'] = time.time()
 
     # Вольтаж каждой ячейки: bms_data[6]..bms_data[69], по 2 байта на ячейку, шаг 1 мВ
     cell_voltages = []
@@ -2081,7 +2402,15 @@ while running:
       x = WIDTH * 0.5 + dx - stats_bar_width / 2
       draw_progress_bar(screen, x, stats_block_y, stats_bar_width, stats_bar_height, value, max_val, text, color)
 
-    draw_text_center(screen, str(get_display_power()), font_small, (0, 0, 0), 295 + CONTENT_Y_OFFSET)
+    rpm_display = int(abs(data['master'].get('rpm', 0)))
+    phase_current_display = int(abs(data['master']['motor_current']))
+    draw_text_center(
+      screen,
+      f"{get_display_power()}W  {rpm_display}rpm  Ф{phase_current_display}A",
+      font_small,
+      (0, 0, 0),
+      295 + CONTENT_Y_OFFSET
+    )
 
     # Когда ослабление магнитного поля активно рисуем рамку
     #if average_duty >= 85:

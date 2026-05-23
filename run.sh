@@ -3,11 +3,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BLE_VESC_SCRIPT="${SCRIPT_DIR}/start_ble_bridge.sh"
+BLE_CONTROLLER_SCRIPT="${SCRIPT_DIR}/start_ble_bridge.sh"
 BLE_BMS_SCRIPT="${SCRIPT_DIR}/start_ble_bms_bridge.sh"
 PYTHON_SCRIPT="${SCRIPT_DIR}/speedometer.py"
+CONTROLLER_TYPE="${CONTROLLER_TYPE:-fardriver}"
+FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC:-E0:00:AC:FB:00:23}"
+FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC:-C0:05:EA:1E:00:45}"
+FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT:-/tmp/fardriver-master-ble}"
+FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT:-/tmp/fardriver-slave-ble}"
 
-bridge_pid_vesc=""
+bridge_pid_controller=""
+bridge_pid_controller_slave=""
 bridge_pid_bms=""
 
 cleanup() {
@@ -16,10 +22,15 @@ cleanup() {
     wait "${bridge_pid_bms}" 2>/dev/null || true
     bridge_pid_bms=""
   fi
-  if [[ -n "${bridge_pid_vesc}" ]]; then
-    kill "${bridge_pid_vesc}" 2>/dev/null || true
-    wait "${bridge_pid_vesc}" 2>/dev/null || true
-    bridge_pid_vesc=""
+  if [[ -n "${bridge_pid_controller}" ]]; then
+    kill "${bridge_pid_controller}" 2>/dev/null || true
+    wait "${bridge_pid_controller}" 2>/dev/null || true
+    bridge_pid_controller=""
+  fi
+  if [[ -n "${bridge_pid_controller_slave}" ]]; then
+    kill "${bridge_pid_controller_slave}" 2>/dev/null || true
+    wait "${bridge_pid_controller_slave}" 2>/dev/null || true
+    bridge_pid_controller_slave=""
   fi
 }
 
@@ -27,12 +38,24 @@ trap cleanup EXIT
 
 sleep 10
 
-if [[ -x "${BLE_VESC_SCRIPT}" ]]; then
-  echo "Запуск BLE-моста VESC..."
-  "${BLE_VESC_SCRIPT}" &
-  bridge_pid_vesc=$!
+if [[ -x "${BLE_CONTROLLER_SCRIPT}" ]]; then
+  if [[ "${CONTROLLER_TYPE}" == "fardriver" ]]; then
+    echo "Запуск BLE-моста FarDriver master..."
+    BLE_LABEL="FarDriver master" BLE_DEVICE_MAC="${FARDRIVER_MASTER_MAC}" BLE_VIRTUAL_PORT="${FARDRIVER_MASTER_PORT}" "${BLE_CONTROLLER_SCRIPT}" &
+    bridge_pid_controller=$!
+
+    sleep 2
+
+    echo "Запуск BLE-моста FarDriver slave..."
+    BLE_LABEL="FarDriver slave" BLE_DEVICE_MAC="${FARDRIVER_SLAVE_MAC}" BLE_VIRTUAL_PORT="${FARDRIVER_SLAVE_PORT}" "${BLE_CONTROLLER_SCRIPT}" &
+    bridge_pid_controller_slave=$!
+  else
+    echo "Запуск BLE-моста контроллера (${CONTROLLER_TYPE})..."
+    CONTROLLER_TYPE="${CONTROLLER_TYPE}" "${BLE_CONTROLLER_SCRIPT}" &
+    bridge_pid_controller=$!
+  fi
 else
-  echo "Внимание: ${BLE_VESC_SCRIPT} не найден или не исполняемый. Пропускаю запуск BLE-моста VESC." >&2
+  echo "Внимание: ${BLE_CONTROLLER_SCRIPT} не найден или не исполняемый. Пропускаю запуск BLE-моста контроллера." >&2
 fi
 
 # sleep 3
@@ -48,4 +71,4 @@ fi
 # sleep 3
 
 echo "Запуск основного приложения..."
-python3 "${PYTHON_SCRIPT}"
+CONTROLLER_TYPE="${CONTROLLER_TYPE}" FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT}" FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT}" python3 "${PYTHON_SCRIPT}"
