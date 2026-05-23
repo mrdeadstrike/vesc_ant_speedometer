@@ -60,6 +60,7 @@ FARDRIVER_SERVICE_UUID = os.environ.get("FARDRIVER_SERVICE_UUID", "0000ffe0-0000
 FARDRIVER_NOTIFY_UUID = os.environ.get("FARDRIVER_NOTIFY_UUID", "0000ffe1-0000-1000-8000-00805f9b34fb")
 FARDRIVER_WRITE_UUID = os.environ.get("FARDRIVER_WRITE_UUID", FARDRIVER_NOTIFY_UUID)
 FARDRIVER_NAME_PREFIX = os.environ.get("FARDRIVER_NAME_PREFIX", "YuanQuFOC")
+FARDRIVER_SPEED_CONTROLLER = os.environ.get("FARDRIVER_SPEED_CONTROLLER", "master").strip().lower()
 FARDRIVER_INIT_COMMANDS_HEX = os.environ.get(
   "FARDRIVER_INIT_COMMANDS_HEX",
   "aa13ec070000b04f,aa07f8000000a956"
@@ -261,6 +262,7 @@ FARDRIVER_LATEST = {
   'master': {},
   'slave': {},
 }
+FARDRIVER_BLE_CONNECT_LOCK = threading.Lock()
 
 data_trip = {
   'max_speed': 0,
@@ -1355,6 +1357,29 @@ def choose_fardriver_characteristics(client, controller_key):
   print(f"FarDriver {controller_key}: selected notify={notify_char.uuid} write={write_char.uuid}", flush=True)
   return notify_char, write_char
 
+async def find_fardriver_device(mac, target_name, controller_key):
+  print(f"FarDriver {controller_key}: BLE scan/connect name={target_name} mac={mac or '-'}", flush=True)
+  devices = await BleakScanner.discover(timeout=12.0)
+  candidates = []
+  for item in devices:
+    item_name = item.name or ""
+    item_addr = (item.address or "").upper()
+    if mac and item_addr == mac.upper():
+      candidates.append(item)
+    elif target_name and item_name == target_name:
+      candidates.append(item)
+    elif (not target_name) and item_name.startswith(FARDRIVER_NAME_PREFIX):
+      candidates.append(item)
+
+  if not candidates and target_name:
+    candidates = [item for item in devices if (item.name or "").startswith(target_name)]
+
+  if candidates:
+    return candidates[0]
+
+  names = ", ".join(f"{item.address} {item.name}" for item in devices if (item.name or "").startswith(FARDRIVER_NAME_PREFIX))
+  raise SerialGetError(f"FarDriver BLE device not found: name={target_name} mac={mac}. Seen: {names}")
+
 class FarDriverTelemetry:
   def __init__(self, controller_key='master'):
     self.controller_key = controller_key
@@ -1484,9 +1509,9 @@ class FarDriverTelemetry:
         if item.get('rpm') is not None:
           data[key]['rpm'] = item['rpm']
 
-      speeds = [item['speed_kmh'] for item in fresh.values() if item.get('speed_kmh') is not None]
-      if speeds:
-        data['speed'] = max(speeds)
+      speed_source = fresh.get(FARDRIVER_SPEED_CONTROLLER) or FARDRIVER_LATEST.get(FARDRIVER_SPEED_CONTROLLER, {})
+      if speed_source.get('speed_kmh') is not None:
+        data['speed'] = speed_source['speed_kmh']
 
       voltages = [item['voltage'] for item in fresh.values() if item.get('voltage') is not None]
       battery_currents = [item['battery_current'] for item in fresh.values() if item.get('battery_current') is not None]
@@ -1595,29 +1620,13 @@ async def fardriver_ble_loop(mac, controller_key='master'):
           last_frame_at = time.time()
 
     try:
-      print(f"FarDriver {controller_key}: BLE scan/connect name={target_name} mac={mac or '-'}", flush=True)
-      devices = await BleakScanner.discover(timeout=12.0)
-      candidates = []
-      for item in devices:
-        item_name = item.name or ""
-        item_addr = (item.address or "").upper()
-        if mac and item_addr == mac.upper():
-          candidates.append(item)
-        elif target_name and item_name == target_name:
-          candidates.append(item)
-        elif (not target_name) and item_name.startswith(FARDRIVER_NAME_PREFIX):
-          candidates.append(item)
+      with FARDRIVER_BLE_CONNECT_LOCK:
+        device = await find_fardriver_device(mac, target_name, controller_key)
+        print(f"FarDriver {controller_key}: BLE connect {device.address} {device.name}", flush=True)
+        client = BleakClient(device, timeout=20.0)
+        await client.connect()
 
-      if not candidates and target_name:
-        candidates = [item for item in devices if (item.name or "").startswith(target_name)]
-
-      device = candidates[0] if candidates else None
-      if device is None:
-        names = ", ".join(f"{item.address} {item.name}" for item in devices if (item.name or "").startswith(FARDRIVER_NAME_PREFIX))
-        raise SerialGetError(f"FarDriver BLE device not found: name={target_name} mac={mac}. Seen: {names}")
-
-      print(f"FarDriver {controller_key}: BLE connect {device.address} {device.name}", flush=True)
-      async with BleakClient(device, timeout=20.0) as client:
+      try:
         print(f"FarDriver {controller_key}: BLE connected", flush=True)
         notify_char, write_char = choose_fardriver_characteristics(client, controller_key)
         await client.start_notify(notify_char, on_notify)
@@ -1640,6 +1649,11 @@ async def fardriver_ble_loop(mac, controller_key='master'):
           await asyncio.sleep(2.0)
           if time.time() - last_frame_at > 12:
             raise SerialGetError("FarDriver BLE no telemetry")
+      finally:
+        try:
+          await client.disconnect()
+        except Exception:
+          pass
     except Exception as exc:
       print(f"FarDriver {controller_key}: BLE reconnect reason: {exc}", flush=True)
       await asyncio.sleep(2.0)
@@ -1648,6 +1662,8 @@ def read_fardriver_ble(mac, controller_key='master'):
   if not mac:
     print(f"FarDriver {controller_key}: MAC не задан", flush=True)
     return
+  if controller_key == "slave":
+    time.sleep(float(os.environ.get("FARDRIVER_SLAVE_CONNECT_DELAY", "6")))
   asyncio.run(fardriver_ble_loop(mac, controller_key))
 
 
