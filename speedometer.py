@@ -12,6 +12,7 @@ import math
 import time
 import uuid
 import traceback
+import re
 
 import glob
 import urllib
@@ -71,6 +72,11 @@ FARDRIVER_DEBUG_NOTIFY = int(os.environ.get("FARDRIVER_DEBUG_NOTIFY", "8"))
 FARDRIVER_SCAN_TIMEOUT = float(os.environ.get("FARDRIVER_SCAN_TIMEOUT", "5"))
 FARDRIVER_CONNECT_TIMEOUT = float(os.environ.get("FARDRIVER_CONNECT_TIMEOUT", "10"))
 FARDRIVER_TRY_CONNECT_TIMEOUT = float(os.environ.get("FARDRIVER_TRY_CONNECT_TIMEOUT", "2"))
+FARDRIVER_FAST_CONNECT_CANDIDATES = int(os.environ.get("FARDRIVER_FAST_CONNECT_CANDIDATES", "6"))
+FARDRIVER_FINAL_CONNECT_TIMEOUT = float(os.environ.get("FARDRIVER_FINAL_CONNECT_TIMEOUT", str(FARDRIVER_CONNECT_TIMEOUT)))
+FARDRIVER_FINAL_CONNECT_CANDIDATES = int(os.environ.get("FARDRIVER_FINAL_CONNECT_CANDIDATES", "2"))
+FARDRIVER_BLUETOOTHCTL_SCAN = os.environ.get("FARDRIVER_BLUETOOTHCTL_SCAN", "1").strip().lower() not in {"0", "false", "off", "no"}
+FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS = int(float(os.environ.get("FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS", "8")))
 FARDRIVER_RECONNECT_DELAY = float(os.environ.get("FARDRIVER_RECONNECT_DELAY", "1"))
 
 GREEN_COLOR = (0, 160, 0)
@@ -1376,7 +1382,7 @@ def split_ble_macs(value):
       seen.add(mac)
   return result
 
-def append_fardriver_candidate(candidates, seen, source, device=None, mac=None, name=None, rssi=None):
+def append_fardriver_candidate(candidates, seen, source, device=None, mac=None, name=None, rssi=None, priority=0):
   address = normalize_ble_mac(getattr(device, "address", None) if device is not None else mac)
   if not address or address in seen:
     return
@@ -1387,7 +1393,73 @@ def append_fardriver_candidate(candidates, seen, source, device=None, mac=None, 
     'name': (getattr(device, "name", None) if device is not None else name) or "",
     'rssi': getattr(device, "rssi", rssi) if device is not None else rssi,
     'source': source,
+    'priority': priority,
   })
+
+def bluetoothctl_fardriver_macs(target_name, controller_key):
+  if not FARDRIVER_BLUETOOTHCTL_SCAN or not target_name:
+    return []
+
+  print(
+    f"FarDriver {controller_key}: bluetoothctl fresh scan name={target_name} timeout={FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS}s",
+    flush=True
+  )
+  chunks = []
+  try:
+    subprocess.run(["bluetoothctl", "scan", "off"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+  except Exception:
+    pass
+
+  try:
+    scan = subprocess.run(
+      ["bluetoothctl", "--timeout", str(FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS), "scan", "on"],
+      capture_output=True,
+      text=True,
+      timeout=FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS + 5,
+    )
+    chunks.append(scan.stdout or "")
+    chunks.append(scan.stderr or "")
+  except Exception as exc:
+    print(f"FarDriver {controller_key}: bluetoothctl scan failed: {exc}", flush=True)
+
+  try:
+    devices = subprocess.run(
+      ["bluetoothctl", "devices"],
+      capture_output=True,
+      text=True,
+      timeout=5,
+    )
+    chunks.append(devices.stdout or "")
+    chunks.append(devices.stderr or "")
+  except Exception as exc:
+    print(f"FarDriver {controller_key}: bluetoothctl devices failed: {exc}", flush=True)
+
+  try:
+    subprocess.run(["bluetoothctl", "scan", "off"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+  except Exception:
+    pass
+
+  macs = []
+  seen = set()
+  pattern = re.compile(r"Device\s+([0-9A-Fa-f:]{17})\s+([^\s]+)")
+  for line in "\n".join(chunks).splitlines():
+    match = pattern.search(line)
+    if not match:
+      continue
+    addr = normalize_ble_mac(match.group(1))
+    name = match.group(2)
+    if name != target_name:
+      continue
+    if addr in seen:
+      macs = [item for item in macs if item != addr]
+    seen.add(addr)
+    macs.append(addr)
+
+  if macs:
+    print(f"FarDriver {controller_key}: bluetoothctl candidates for {target_name}: {', '.join(macs)}", flush=True)
+  else:
+    print(f"FarDriver {controller_key}: bluetoothctl candidates for {target_name}: none", flush=True)
+  return macs
 
 async def find_fardriver_candidates(mac, target_name, controller_key):
   from bleak import BleakScanner
@@ -1401,32 +1473,40 @@ async def find_fardriver_candidates(mac, target_name, controller_key):
   if explicit_mac and explicit_mac not in configured_macs:
     configured_macs.append(explicit_mac)
 
+  scanned_by_mac = {normalize_ble_mac(item.address): item for item in devices if normalize_ble_mac(item.address)}
+  fresh_macs = bluetoothctl_fardriver_macs(target_name, controller_key)
+  for index, fresh_mac in enumerate(reversed(fresh_macs), 1):
+    scanned = scanned_by_mac.get(fresh_mac)
+    if scanned is not None:
+      append_fardriver_candidate(candidates, seen, "bluetoothctl+scan", device=scanned, priority=1000 + index)
+    else:
+      append_fardriver_candidate(candidates, seen, "bluetoothctl", mac=fresh_mac, name=target_name, priority=1000 + index)
+
   for item in devices:
     item_name = item.name or ""
     item_addr = normalize_ble_mac(item.address)
     if not item_addr:
       continue
     if item_addr in configured_macs:
-      append_fardriver_candidate(candidates, seen, "configured+scan", device=item)
+      append_fardriver_candidate(candidates, seen, "configured+scan", device=item, priority=700)
     elif target_name and item_name == target_name:
-      append_fardriver_candidate(candidates, seen, "exact-name", device=item)
+      append_fardriver_candidate(candidates, seen, "exact-name", device=item, priority=600)
     elif target_name and item_name.startswith(target_name):
-      append_fardriver_candidate(candidates, seen, "name-prefix", device=item)
+      append_fardriver_candidate(candidates, seen, "name-prefix", device=item, priority=500)
     elif (not target_name) and item_name.startswith(FARDRIVER_NAME_PREFIX):
-      append_fardriver_candidate(candidates, seen, "prefix", device=item)
+      append_fardriver_candidate(candidates, seen, "prefix", device=item, priority=400)
 
-  scanned_by_mac = {normalize_ble_mac(item.address): item for item in devices if normalize_ble_mac(item.address)}
   for configured_mac in reversed(configured_macs):
     scanned = scanned_by_mac.get(configured_mac)
     if scanned is not None:
-      append_fardriver_candidate(candidates, seen, "configured+scan", device=scanned)
+      append_fardriver_candidate(candidates, seen, "configured+scan", device=scanned, priority=300)
     else:
-      append_fardriver_candidate(candidates, seen, "configured", mac=configured_mac, name=target_name)
+      append_fardriver_candidate(candidates, seen, "configured", mac=configured_mac, name=target_name, priority=200)
 
   if candidates:
     candidates.sort(
       key=lambda item: (
-        item['source'] != "configured",
+        item['priority'],
         item['rssi'] if item['rssi'] is not None else -999
       ),
       reverse=True
@@ -1434,7 +1514,7 @@ async def find_fardriver_candidates(mac, target_name, controller_key):
     print(f"FarDriver {controller_key}: BLE candidates:", flush=True)
     for index, item in enumerate(candidates, 1):
       print(
-        f"  {index}. {item['address']} {item['name'] or '-'} rssi={item['rssi'] if item['rssi'] is not None else 'n/a'} source={item['source']}",
+        f"  {index}. {item['address']} {item['name'] or '-'} rssi={item['rssi'] if item['rssi'] is not None else 'n/a'} source={item['source']} priority={item['priority']}",
         flush=True
       )
     return candidates
@@ -1686,7 +1766,13 @@ async def fardriver_ble_loop(mac, controller_key='master'):
         candidates = await find_fardriver_candidates(mac, target_name, controller_key)
         client = None
         last_connect_error = None
-        for candidate in candidates:
+        fast_candidates = candidates[:max(0, FARDRIVER_FAST_CONNECT_CANDIDATES)]
+        if len(candidates) > len(fast_candidates):
+          print(
+            f"FarDriver {controller_key}: BLE fast pass limited to {len(fast_candidates)} of {len(candidates)} candidates",
+            flush=True
+          )
+        for candidate in fast_candidates:
           target = candidate['device'] if candidate['device'] is not None else candidate['address']
           print(
             f"FarDriver {controller_key}: BLE try connect {candidate['address']} {candidate['name'] or '-'} timeout={FARDRIVER_TRY_CONNECT_TIMEOUT}s",
@@ -1713,6 +1799,36 @@ async def fardriver_ble_loop(mac, controller_key='master'):
                 await candidate_client.disconnect()
             except Exception:
               pass
+
+        if client is None:
+          final_candidates = candidates[:max(0, FARDRIVER_FINAL_CONNECT_CANDIDATES)]
+          for candidate in final_candidates:
+            target = candidate['device'] if candidate['device'] is not None else candidate['address']
+            print(
+              f"FarDriver {controller_key}: BLE final connect {candidate['address']} {candidate['name'] or '-'} timeout={FARDRIVER_FINAL_CONNECT_TIMEOUT}s",
+              flush=True
+            )
+            candidate_client = None
+            try:
+              candidate_client = BleakClient(target, timeout=FARDRIVER_FINAL_CONNECT_TIMEOUT)
+              await candidate_client.connect()
+              client = candidate_client
+              print(
+                f"FarDriver {controller_key}: BLE connected final {candidate['address']} {candidate['name'] or '-'}",
+                flush=True
+              )
+              break
+            except Exception as exc:
+              last_connect_error = exc
+              print(
+                f"FarDriver {controller_key}: BLE final failed {candidate['address']}: {exc}",
+                flush=True
+              )
+              try:
+                if candidate_client is not None:
+                  await candidate_client.disconnect()
+              except Exception:
+                pass
 
         if client is None:
           raise SerialGetError(f"FarDriver BLE all candidates failed: {last_connect_error}")
