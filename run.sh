@@ -32,6 +32,7 @@ cleanup() {
     wait "${bridge_pid_controller_slave}" 2>/dev/null || true
     bridge_pid_controller_slave=""
   fi
+  rm -f "${FARDRIVER_MASTER_PORT}" "${FARDRIVER_SLAVE_PORT}"
 }
 
 trap cleanup EXIT

@@ -34,7 +34,7 @@ trap cleanup INT TERM
 
 while true; do
   echo "Запускаю BLE-мост для ${BLE_LABEL} (${BLE_DEVICE_MAC}) на ${BLE_VIRTUAL_PORT}"
-  if [ -e "${BLE_VIRTUAL_PORT}" ]; then
+  if [ -e "${BLE_VIRTUAL_PORT}" ] || [ -L "${BLE_VIRTUAL_PORT}" ]; then
     echo "Удаляю существующий порт ${BLE_VIRTUAL_PORT}"
     rm -f "${BLE_VIRTUAL_PORT}"
   fi

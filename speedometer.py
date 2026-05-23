@@ -49,6 +49,7 @@ DEFAULT_VESC_SERIAL_TIMEOUT = 0.5
 DEFAULT_FARDRIVER_SERIAL_TIMEOUT = 0.2
 CONTROLLER_TYPE = os.environ.get("CONTROLLER_TYPE", "fardriver").strip().lower()
 PYGAME_FULLSCREEN = os.environ.get("PYGAME_FULLSCREEN", "0").strip().lower() in {"1", "true", "on", "yes"}
+ENABLE_BMS = os.environ.get("ENABLE_BMS", "0" if CONTROLLER_TYPE == "fardriver" else "1").strip().lower() not in {"0", "false", "off", "no"}
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -1907,7 +1908,10 @@ def read_bms(
 
 
 
-threading.Thread(target=read_bms, kwargs={"port_name": BMS_PORT_OVERRIDE}, daemon=True).start()
+if ENABLE_BMS:
+  threading.Thread(target=read_bms, kwargs={"port_name": BMS_PORT_OVERRIDE}, daemon=True).start()
+else:
+  print("BMS чтение отключено (ENABLE_BMS=0)", flush=True)
 
 ######## INTERFACE ###########
 import pygame
