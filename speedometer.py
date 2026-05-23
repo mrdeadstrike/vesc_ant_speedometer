@@ -48,6 +48,7 @@ BMS_PORT_OVERRIDE = "/tmp/bms-ble"
 DEFAULT_VESC_SERIAL_TIMEOUT = 0.5
 DEFAULT_FARDRIVER_SERIAL_TIMEOUT = 0.2
 CONTROLLER_TYPE = os.environ.get("CONTROLLER_TYPE", "fardriver").strip().lower()
+PYGAME_FULLSCREEN = os.environ.get("PYGAME_FULLSCREEN", "0").strip().lower() in {"1", "true", "on", "yes"}
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -2261,7 +2262,7 @@ ACCEL_HISTORY_MAX = 300     # ~30 сек при шаге 0.1с
 
 running = True
 #FULL_SCREEN
-if IS_RASPBERY:
+if IS_RASPBERY and PYGAME_FULLSCREEN:
   screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
 
 while running:
