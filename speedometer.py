@@ -88,6 +88,7 @@ GPS_SERIAL_PORT = os.environ.get("GPS_SERIAL_PORT", "").strip()
 GPS_BAUDRATE = int(os.environ.get("GPS_BAUDRATE", "9600"))
 GPS_SERIAL_TIMEOUT = float(os.environ.get("GPS_SERIAL_TIMEOUT", "1"))
 GPS_STALE_SECONDS = float(os.environ.get("GPS_STALE_SECONDS", "5"))
+GPS_MAX_REASONABLE_SPEED_KMH = float(os.environ.get("GPS_MAX_REASONABLE_SPEED_KMH", "120"))
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -279,7 +280,9 @@ data = {
   'voltage_down': 0,
   'gps_speed': 0.0,
   'gps_satellites': 0,
-  'gps_last_update': 0.0,
+  'gps_fix': False,
+  'gps_speed_last_update': 0.0,
+  'gps_satellites_last_update': 0.0,
 }
 
 FARDRIVER_LATEST_LOCK = threading.Lock()
@@ -2395,8 +2398,34 @@ def nmea_int(value):
   except (TypeError, ValueError):
     return None
 
+def nmea_checksum_ok(line):
+  if "*" not in line:
+    return True
+  payload, checksum = line[1:].split("*", 1)
+  checksum = checksum[:2]
+  try:
+    expected = int(checksum, 16)
+  except ValueError:
+    return False
+  actual = 0
+  for char in payload:
+    actual ^= ord(char)
+  return actual == expected
+
+def gps_accept_speed(speed_kmh):
+  if speed_kmh is None:
+    return
+  if speed_kmh < 0 or speed_kmh > GPS_MAX_REASONABLE_SPEED_KMH:
+    print(f"GPS: отброшена подозрительная скорость {speed_kmh:.1f} км/ч", flush=True)
+    return
+  data['gps_speed'] = max(0.0, speed_kmh)
+  data['gps_speed_last_update'] = time.time()
+
 def parse_nmea_sentence(line):
   if not line.startswith("$"):
+    return
+  if not nmea_checksum_ok(line):
+    print(f"GPS: отброшена строка с плохой checksum: {line}", flush=True)
     return
   body = line[1:].split("*", 1)[0]
   parts = body.split(",")
@@ -2407,32 +2436,38 @@ def parse_nmea_sentence(line):
 
   if sentence_type == "RMC":
     # $GPRMC,time,status,lat,N,lon,E,speed_knots,...
-    if len(parts) > 7 and parts[2] == "A":
+    mode = parts[12] if len(parts) > 12 else ""
+    valid = parts[2] == "A" and mode != "N"
+    data['gps_fix'] = valid
+    if len(parts) > 7 and valid:
       speed_knots = nmea_float(parts[7])
       if speed_knots is not None:
-        data['gps_speed'] = max(0.0, speed_knots * 1.852)
-        data['gps_last_update'] = now
+        gps_accept_speed(speed_knots * 1.852)
   elif sentence_type == "VTG":
     # $GPVTG,...,speed_knots,N,speed_kmh,K
-    if len(parts) > 7:
+    mode = parts[9] if len(parts) > 9 else ""
+    if len(parts) > 7 and data.get('gps_fix', False) and mode != "N":
       speed_kmh = nmea_float(parts[7])
       if speed_kmh is not None:
-        data['gps_speed'] = max(0.0, speed_kmh)
-        data['gps_last_update'] = now
+        gps_accept_speed(speed_kmh)
   elif sentence_type in {"GGA", "GNS"}:
     # GGA/GNS: satellites used in fix.
+    if sentence_type == "GGA" and len(parts) > 6:
+      data['gps_fix'] = (nmea_int(parts[6]) or 0) > 0
+    elif sentence_type == "GNS" and len(parts) > 6:
+      data['gps_fix'] = bool(parts[6].strip()) and parts[6].strip("N") != ""
     if len(parts) > 7:
       satellites = nmea_int(parts[7])
       if satellites is not None:
         data['gps_satellites'] = max(0, satellites)
-        data['gps_last_update'] = now
+        data['gps_satellites_last_update'] = now
   elif sentence_type == "GSV":
     # GSV: total satellites in view.
     if len(parts) > 3:
       satellites = nmea_int(parts[3])
       if satellites is not None:
         data['gps_satellites'] = max(0, satellites)
-        data['gps_last_update'] = now
+        data['gps_satellites_last_update'] = now
 
 def iter_gps_port_candidates(explicit_port=None):
   seen = set()
@@ -2559,7 +2594,7 @@ font_large = ThemedFont(pygame.font.SysFont('Arial', 310))
 font_medium = ThemedFont(pygame.font.SysFont('Arial', 50, True))
 font_small = ThemedFont(pygame.font.SysFont('Arial', 40, True))
 font_tick = ThemedFont(pygame.font.SysFont('Arial', 30, True))
-font_gps = ThemedFont(pygame.font.SysFont('Arial', 24, True))
+font_gps = ThemedFont(pygame.font.SysFont('Arial', 34, True))
 
 def render_force_color(font_obj, text, color, background=None):
   base_font = font_obj._font if isinstance(font_obj, ThemedFont) else font_obj
@@ -2712,10 +2747,11 @@ def draw_text_right(surface, text, font, color, x, y):
   surface.blit(render, rect)
 
 def draw_gps_overlay(surface):
-  gps_age = time.time() - data.get('gps_last_update', 0)
-  gps_stale = gps_age > GPS_STALE_SECONDS
-  speed_text = "GPS --" if gps_stale else f"GPS {data.get('gps_speed', 0.0):.1f}"
-  sats_text = "SAT --" if gps_stale else f"SAT {int(data.get('gps_satellites', 0))}"
+  now = time.time()
+  speed_stale = now - data.get('gps_speed_last_update', 0) > GPS_STALE_SECONDS
+  sats_stale = now - data.get('gps_satellites_last_update', 0) > GPS_STALE_SECONDS
+  speed_text = "--" if speed_stale else f"{data.get('gps_speed', 0.0):.1f}"
+  sats_text = "--" if sats_stale else f"{int(data.get('gps_satellites', 0))}"
   draw_text_left(surface, speed_text, font_gps, RED_COLOR, 10, 58)
   draw_text_right(surface, sats_text, font_gps, RED_COLOR, WIDTH - 10, 58)
 
