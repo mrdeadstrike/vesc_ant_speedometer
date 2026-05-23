@@ -4,7 +4,7 @@ set -euo pipefail
 BLE_DEVICE_MAC="${BLE_DEVICE_MAC:-}"
 BLE_VIRTUAL_PORT="${BLE_VIRTUAL_PORT:-/tmp/fardriver-ble}"
 BLE_LABEL="${BLE_LABEL:-FarDriver}"
-BLE_ADAPTER="${BLE_ADAPTER:-hci0}"
+BLE_ADAPTER="${BLE_ADAPTER:-}"
 
 BLE_SERIAL_BIN="${BLE_SERIAL_BIN:-$(command -v ble-serial || echo "$HOME/.local/bin/ble-serial")}"
 
@@ -39,7 +39,11 @@ while true; do
     rm -f "${BLE_VIRTUAL_PORT}"
   fi
   set +e
-  "${BLE_SERIAL_BIN}" -d "${BLE_DEVICE_MAC}" -p "${BLE_VIRTUAL_PORT}" -i "${BLE_ADAPTER}" &
+  args=(-d "${BLE_DEVICE_MAC}" -p "${BLE_VIRTUAL_PORT}")
+  if [ -n "${BLE_ADAPTER}" ]; then
+    args+=("-i" "${BLE_ADAPTER}")
+  fi
+  "${BLE_SERIAL_BIN}" "${args[@]}" &
   ble_pid=$!
   wait "${ble_pid}"
   exit_code=$?

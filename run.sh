@@ -50,6 +50,8 @@ if [[ -x "${BLE_CONTROLLER_SCRIPT}" ]]; then
     echo "Запуск BLE-моста FarDriver slave..."
     BLE_LABEL="FarDriver slave" BLE_DEVICE_MAC="${FARDRIVER_SLAVE_MAC}" BLE_VIRTUAL_PORT="${FARDRIVER_SLAVE_PORT}" "${BLE_CONTROLLER_SCRIPT}" &
     bridge_pid_controller_slave=$!
+
+    sleep 5
   else
     echo "Запуск BLE-моста контроллера (${CONTROLLER_TYPE})..."
     CONTROLLER_TYPE="${CONTROLLER_TYPE}" "${BLE_CONTROLLER_SCRIPT}" &
