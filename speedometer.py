@@ -1364,6 +1364,8 @@ async def find_fardriver_device(mac, target_name, controller_key):
   for item in devices:
     item_name = item.name or ""
     item_addr = (item.address or "").upper()
+    if not item_addr:
+      continue
     if mac and item_addr == mac.upper():
       candidates.append(item)
     elif target_name and item_name == target_name:
@@ -1372,7 +1374,10 @@ async def find_fardriver_device(mac, target_name, controller_key):
       candidates.append(item)
 
   if not candidates and target_name:
-    candidates = [item for item in devices if (item.name or "").startswith(target_name)]
+    candidates = [
+      item for item in devices
+      if (item.address or "") and (item.name or "").startswith(target_name)
+    ]
 
   if candidates:
     return candidates[0]
