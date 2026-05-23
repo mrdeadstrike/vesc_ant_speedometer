@@ -7,8 +7,10 @@ BLE_CONTROLLER_SCRIPT="${SCRIPT_DIR}/start_ble_bridge.sh"
 BLE_BMS_SCRIPT="${SCRIPT_DIR}/start_ble_bms_bridge.sh"
 PYTHON_SCRIPT="${SCRIPT_DIR}/speedometer.py"
 CONTROLLER_TYPE="${CONTROLLER_TYPE:-fardriver}"
-FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC:-E0:00:AC:FB:00:23}"
-FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC:-C0:05:EA:1E:00:45}"
+FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC:-}"
+FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC:-}"
+FARDRIVER_NAME_PREFIX="${FARDRIVER_NAME_PREFIX:-YuanQuFOC}"
+FARDRIVER_SCAN_SECONDS="${FARDRIVER_SCAN_SECONDS:-20}"
 FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT:-/tmp/fardriver-master-ble}"
 FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT:-/tmp/fardriver-slave-ble}"
 
@@ -39,8 +41,68 @@ trap cleanup EXIT
 
 sleep 10
 
+discover_fardriver_macs() {
+  local scan_output
+  local found_lines
+  local fallback_one=""
+  local fallback_two=""
+
+  echo "Ищу FarDriver BLE устройства по имени ${FARDRIVER_NAME_PREFIX} (${FARDRIVER_SCAN_SECONDS} с)..."
+  scan_output="$(
+    {
+      bluetoothctl devices 2>/dev/null || true
+      bluetoothctl --timeout "${FARDRIVER_SCAN_SECONDS}" scan on 2>/dev/null || true
+    }
+  )"
+
+  found_lines="$(printf '%s\n' "${scan_output}" \
+    | sed -nE "s/^.*Device ([0-9A-Fa-f:]{17}) (${FARDRIVER_NAME_PREFIX}[^[:space:]]*).*$/\U\1\E \2/p" \
+    | awk '!seen[$1]++')"
+
+  if [[ -z "${found_lines}" ]]; then
+    echo "Не нашёл BLE-устройства с именем ${FARDRIVER_NAME_PREFIX}." >&2
+    echo "Проверь: bluetoothctl scan on" >&2
+    return 1
+  fi
+
+  echo "Найдены кандидаты FarDriver:"
+  printf '%s\n' "${found_lines}"
+
+  while read -r mac name; do
+    [[ -z "${mac:-}" ]] && continue
+    if [[ -z "${fallback_one}" ]]; then
+      fallback_one="${mac}"
+    elif [[ -z "${fallback_two}" && "${mac}" != "${fallback_one}" ]]; then
+      fallback_two="${mac}"
+    fi
+
+    if [[ -z "${FARDRIVER_MASTER_MAC}" && "${mac}" == E0:* ]]; then
+      FARDRIVER_MASTER_MAC="${mac}"
+    elif [[ -z "${FARDRIVER_SLAVE_MAC}" && "${mac}" == C0:* ]]; then
+      FARDRIVER_SLAVE_MAC="${mac}"
+    fi
+  done <<< "${found_lines}"
+
+  FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC:-${fallback_one}}"
+  if [[ -z "${FARDRIVER_SLAVE_MAC}" || "${FARDRIVER_SLAVE_MAC}" == "${FARDRIVER_MASTER_MAC}" ]]; then
+    FARDRIVER_SLAVE_MAC="${fallback_two}"
+  fi
+
+  if [[ -z "${FARDRIVER_MASTER_MAC}" || -z "${FARDRIVER_SLAVE_MAC}" ]]; then
+    echo "Нужно два FarDriver BLE-устройства, найдено меньше двух." >&2
+    return 1
+  fi
+
+  echo "FarDriver master MAC: ${FARDRIVER_MASTER_MAC}"
+  echo "FarDriver slave  MAC: ${FARDRIVER_SLAVE_MAC}"
+}
+
 if [[ -x "${BLE_CONTROLLER_SCRIPT}" ]]; then
   if [[ "${CONTROLLER_TYPE}" == "fardriver" ]]; then
+    if [[ -z "${FARDRIVER_MASTER_MAC}" || -z "${FARDRIVER_SLAVE_MAC}" ]]; then
+      discover_fardriver_macs
+    fi
+
     echo "Запуск BLE-моста FarDriver master..."
     BLE_LABEL="FarDriver master" BLE_DEVICE_MAC="${FARDRIVER_MASTER_MAC}" BLE_VIRTUAL_PORT="${FARDRIVER_MASTER_PORT}" "${BLE_CONTROLLER_SCRIPT}" &
     bridge_pid_controller=$!

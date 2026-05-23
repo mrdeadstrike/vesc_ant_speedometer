@@ -12,7 +12,7 @@ import sys
 from collections import OrderedDict
 
 SCAN_SECONDS = 10
-DEVICE_RE = re.compile(r"^\\s*Device\\s+([0-9A-F:]{17})\\s+(.*)$")
+DEVICE_RE = re.compile(r"^\\s*(?:\\[[^\\]]+\\]\\s+)?Device\\s+([0-9A-F:]{17})\\s+(.*)$", re.IGNORECASE)
 
 
 def run_bluetoothctl(args):
@@ -31,6 +31,10 @@ def main():
     default=SCAN_SECONDS,
     help=f"Время сканирования, секунд (по умолчанию {SCAN_SECONDS})",
   )
+  parser.add_argument(
+    "--name-prefix",
+    help="Показывать только устройства, имя которых начинается с этого текста (например YuanQuFOC)",
+  )
   args = parser.parse_args()
 
   try:
@@ -45,7 +49,10 @@ def main():
     match = DEVICE_RE.match(line)
     if match:
       mac, name = match.groups()
-      devices[mac] = name.strip() or "(без имени)"
+      name = name.strip() or "(без имени)"
+      if args.name_prefix and not name.lower().startswith(args.name_prefix.lower()):
+        continue
+      devices[mac.upper()] = name
 
   if not devices:
     print(f"За {args.timeout} секунд устройства не найдены.")

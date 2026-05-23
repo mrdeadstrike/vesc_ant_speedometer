@@ -1,8 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-MASTER_MAC="${FARDRIVER_MASTER_MAC:-E0:00:AC:FB:00:23}"
-SLAVE_MAC="${FARDRIVER_SLAVE_MAC:-C0:05:EA:1E:00:45}"
+MASTER_MAC="${FARDRIVER_MASTER_MAC:-}"
+SLAVE_MAC="${FARDRIVER_SLAVE_MAC:-}"
+NAME_PREFIX="${FARDRIVER_NAME_PREFIX:-YuanQuFOC}"
 SCAN_SECONDS="${SCAN_SECONDS:-20}"
 
 echo "== Bluetooth adapters =="
@@ -23,7 +24,13 @@ echo "${scan_output}"
 
 echo
 echo "== Target check =="
-for mac in "${MASTER_MAC}" "${SLAVE_MAC}"; do
+printf '%s\n' "${scan_output}" | sed -nE "s/^.*Device ([0-9A-Fa-f:]{17}) (${NAME_PREFIX}[^[:space:]]*).*$/\U\1\E \2/p" | awk '!seen[$1]++'
+
+targets=()
+[ -n "${MASTER_MAC}" ] && targets+=("${MASTER_MAC}")
+[ -n "${SLAVE_MAC}" ] && targets+=("${SLAVE_MAC}")
+
+for mac in "${targets[@]}"; do
   if echo "${scan_output}" | grep -qi "${mac}"; then
     echo "FOUND ${mac}"
   else
