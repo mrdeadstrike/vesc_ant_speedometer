@@ -10,6 +10,8 @@ CONTROLLER_TYPE="${CONTROLLER_TYPE:-fardriver}"
 FARDRIVER_BLE_BACKEND="${FARDRIVER_BLE_BACKEND:-bleak}"
 FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC:-}"
 FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC:-}"
+FARDRIVER_MASTER_NAME="${FARDRIVER_MASTER_NAME:-YuanQuFOC158}"
+FARDRIVER_SLAVE_NAME="${FARDRIVER_SLAVE_NAME:-YuanQuFOC690}"
 FARDRIVER_NAME_PREFIX="${FARDRIVER_NAME_PREFIX:-YuanQuFOC}"
 FARDRIVER_SCAN_SECONDS="${FARDRIVER_SCAN_SECONDS:-20}"
 FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT:-/tmp/fardriver-master-ble}"
@@ -45,15 +47,10 @@ sleep 10
 discover_fardriver_macs() {
   local scan_output
   local found_lines
-  local fallback_one=""
-  local fallback_two=""
 
   echo "Ищу FarDriver BLE устройства по имени ${FARDRIVER_NAME_PREFIX} (${FARDRIVER_SCAN_SECONDS} с)..."
   scan_output="$(
-    {
-      bluetoothctl devices 2>/dev/null || true
-      bluetoothctl --timeout "${FARDRIVER_SCAN_SECONDS}" scan on 2>/dev/null || true
-    }
+    bluetoothctl --timeout "${FARDRIVER_SCAN_SECONDS}" scan on 2>/dev/null || true
   )"
 
   found_lines="$(printf '%s\n' "${scan_output}" \
@@ -71,31 +68,20 @@ discover_fardriver_macs() {
 
   while read -r mac name; do
     [[ -z "${mac:-}" ]] && continue
-    if [[ -z "${fallback_one}" ]]; then
-      fallback_one="${mac}"
-    elif [[ -z "${fallback_two}" && "${mac}" != "${fallback_one}" ]]; then
-      fallback_two="${mac}"
-    fi
-
-    if [[ -z "${FARDRIVER_MASTER_MAC}" && "${mac}" == E0:* ]]; then
+    if [[ -z "${FARDRIVER_MASTER_MAC}" && "${name}" == "${FARDRIVER_MASTER_NAME}" ]]; then
       FARDRIVER_MASTER_MAC="${mac}"
-    elif [[ -z "${FARDRIVER_SLAVE_MAC}" && "${mac}" == C0:* ]]; then
+    elif [[ -z "${FARDRIVER_SLAVE_MAC}" && "${name}" == "${FARDRIVER_SLAVE_NAME}" ]]; then
       FARDRIVER_SLAVE_MAC="${mac}"
     fi
   done <<< "${found_lines}"
 
-  FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC:-${fallback_one}}"
-  if [[ -z "${FARDRIVER_SLAVE_MAC}" || "${FARDRIVER_SLAVE_MAC}" == "${FARDRIVER_MASTER_MAC}" ]]; then
-    FARDRIVER_SLAVE_MAC="${fallback_two}"
-  fi
-
   if [[ -z "${FARDRIVER_MASTER_MAC}" || -z "${FARDRIVER_SLAVE_MAC}" ]]; then
-    echo "Нужно два FarDriver BLE-устройства, найдено меньше двух." >&2
+    echo "Не нашёл оба FarDriver по именам: master=${FARDRIVER_MASTER_NAME}, slave=${FARDRIVER_SLAVE_NAME}." >&2
     return 1
   fi
 
-  echo "FarDriver master MAC: ${FARDRIVER_MASTER_MAC}"
-  echo "FarDriver slave  MAC: ${FARDRIVER_SLAVE_MAC}"
+  echo "FarDriver master: ${FARDRIVER_MASTER_NAME} ${FARDRIVER_MASTER_MAC}"
+  echo "FarDriver slave : ${FARDRIVER_SLAVE_NAME} ${FARDRIVER_SLAVE_MAC}"
 }
 
 if [[ -x "${BLE_CONTROLLER_SCRIPT}" ]]; then
@@ -141,4 +127,4 @@ fi
 # sleep 3
 
 echo "Запуск основного приложения..."
-CONTROLLER_TYPE="${CONTROLLER_TYPE}" FARDRIVER_BLE_BACKEND="${FARDRIVER_BLE_BACKEND}" FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC}" FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC}" FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT}" FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT}" python3 "${PYTHON_SCRIPT}"
+CONTROLLER_TYPE="${CONTROLLER_TYPE}" FARDRIVER_BLE_BACKEND="${FARDRIVER_BLE_BACKEND}" FARDRIVER_MASTER_NAME="${FARDRIVER_MASTER_NAME}" FARDRIVER_SLAVE_NAME="${FARDRIVER_SLAVE_NAME}" FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC}" FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC}" FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT}" FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT}" python3 "${PYTHON_SCRIPT}"

@@ -54,10 +54,17 @@ ENABLE_BMS = os.environ.get("ENABLE_BMS", "0" if CONTROLLER_TYPE == "fardriver" 
 FARDRIVER_BLE_BACKEND = os.environ.get("FARDRIVER_BLE_BACKEND", "bleak").strip().lower()
 FARDRIVER_MASTER_MAC = os.environ.get("FARDRIVER_MASTER_MAC", "").strip()
 FARDRIVER_SLAVE_MAC = os.environ.get("FARDRIVER_SLAVE_MAC", "").strip()
+FARDRIVER_MASTER_NAME = os.environ.get("FARDRIVER_MASTER_NAME", "YuanQuFOC158").strip()
+FARDRIVER_SLAVE_NAME = os.environ.get("FARDRIVER_SLAVE_NAME", "YuanQuFOC690").strip()
 FARDRIVER_SERVICE_UUID = os.environ.get("FARDRIVER_SERVICE_UUID", "0000ffe0-0000-1000-8000-00805f9b34fb")
 FARDRIVER_NOTIFY_UUID = os.environ.get("FARDRIVER_NOTIFY_UUID", "0000ffe1-0000-1000-8000-00805f9b34fb")
 FARDRIVER_WRITE_UUID = os.environ.get("FARDRIVER_WRITE_UUID", FARDRIVER_NOTIFY_UUID)
 FARDRIVER_NAME_PREFIX = os.environ.get("FARDRIVER_NAME_PREFIX", "YuanQuFOC")
+FARDRIVER_INIT_COMMANDS_HEX = os.environ.get(
+  "FARDRIVER_INIT_COMMANDS_HEX",
+  "aa13ec070000b04f,aa07f8000000a956"
+)
+FARDRIVER_DEBUG_NOTIFY = int(os.environ.get("FARDRIVER_DEBUG_NOTIFY", "8"))
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -1291,6 +1298,18 @@ def fardriver_old_command(command, sub_command, value_1=0, value_2=0):
 def fardriver_phase_current(raw_value):
   return 1.953125 * math.sqrt(max(0, raw_value))
 
+def fardriver_init_packets():
+  packets = []
+  for item in FARDRIVER_INIT_COMMANDS_HEX.split(','):
+    item = item.strip().replace(' ', '')
+    if not item:
+      continue
+    try:
+      packets.append(bytes.fromhex(item))
+    except ValueError as exc:
+      print(f"FarDriver: некорректный init hex {item}: {exc}", flush=True)
+  return packets
+
 class FarDriverTelemetry:
   def __init__(self, controller_key='master'):
     self.controller_key = controller_key
@@ -1493,18 +1512,24 @@ async def fardriver_ble_loop(mac, controller_key='master'):
     return
 
   status_poll = fardriver_old_command(0x13, 0x07)
+  init_packets = fardriver_init_packets()
   notify_uuid = FARDRIVER_NOTIFY_UUID
   write_uuid = FARDRIVER_WRITE_UUID
+  target_name = FARDRIVER_MASTER_NAME if controller_key == "master" else FARDRIVER_SLAVE_NAME
 
   while True:
     telemetry = FarDriverTelemetry(controller_key)
     buffer = bytearray()
     last_frame_at = time.time()
+    debug_notify_left = FARDRIVER_DEBUG_NOTIFY
 
     def on_notify(_, chunk):
-      nonlocal last_frame_at
+      nonlocal last_frame_at, debug_notify_left
       if not chunk:
         return
+      if debug_notify_left > 0:
+        print(f"FarDriver {controller_key}: notify {bytes(chunk).hex()}", flush=True)
+        debug_notify_left -= 1
       buffer.extend(bytes(chunk))
       while len(buffer) >= 16:
         try:
@@ -1525,29 +1550,40 @@ async def fardriver_ble_loop(mac, controller_key='master'):
           last_frame_at = time.time()
 
     try:
-      print(f"FarDriver {controller_key}: BLE scan/connect {mac}", flush=True)
-      device = await BleakScanner.find_device_by_address(mac, timeout=12.0)
+      print(f"FarDriver {controller_key}: BLE scan/connect name={target_name} mac={mac or '-'}", flush=True)
+      devices = await BleakScanner.discover(timeout=12.0)
+      candidates = []
+      for item in devices:
+        item_name = item.name or ""
+        item_addr = (item.address or "").upper()
+        if mac and item_addr == mac.upper():
+          candidates.append(item)
+        elif target_name and item_name == target_name:
+          candidates.append(item)
+        elif (not target_name) and item_name.startswith(FARDRIVER_NAME_PREFIX):
+          candidates.append(item)
+
+      if not candidates and target_name:
+        candidates = [item for item in devices if (item.name or "").startswith(target_name)]
+
+      device = candidates[0] if candidates else None
       if device is None:
-        devices = await BleakScanner.discover(timeout=8.0)
-        expected_prefix = "E0:" if controller_key == "master" else "C0:"
-        candidates = [
-          item for item in devices
-          if (item.address or "").upper() == mac.upper()
-          or (
-            (item.name or "").startswith(FARDRIVER_NAME_PREFIX)
-            and (item.address or "").upper().startswith(expected_prefix)
-          )
-        ]
-        if candidates:
-          device = candidates[0]
-      if device is None:
-        raise SerialGetError(f"FarDriver BLE device not found: {mac}")
+        names = ", ".join(f"{item.address} {item.name}" for item in devices if (item.name or "").startswith(FARDRIVER_NAME_PREFIX))
+        raise SerialGetError(f"FarDriver BLE device not found: name={target_name} mac={mac}. Seen: {names}")
 
       print(f"FarDriver {controller_key}: BLE connect {device.address} {device.name}", flush=True)
       async with BleakClient(device, timeout=20.0) as client:
         print(f"FarDriver {controller_key}: BLE connected", flush=True)
         await client.start_notify(notify_uuid, on_notify)
         print(f"FarDriver {controller_key}: notify {notify_uuid}", flush=True)
+
+        for packet in init_packets:
+          print(f"FarDriver {controller_key}: init write {packet.hex()}", flush=True)
+          try:
+            await client.write_gatt_char(write_uuid, packet, response=False)
+          except Exception:
+            await client.write_gatt_char(write_uuid, packet, response=True)
+          await asyncio.sleep(0.2)
 
         while True:
           try:
