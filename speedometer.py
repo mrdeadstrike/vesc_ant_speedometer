@@ -1659,8 +1659,9 @@ async def fardriver_ble_loop(mac, controller_key='master'):
       await asyncio.sleep(2.0)
 
 def read_fardriver_ble(mac, controller_key='master'):
-  if not mac:
-    print(f"FarDriver {controller_key}: MAC не задан", flush=True)
+  target_name = FARDRIVER_MASTER_NAME if controller_key == "master" else FARDRIVER_SLAVE_NAME
+  if not mac and not target_name:
+    print(f"FarDriver {controller_key}: MAC и имя не заданы", flush=True)
     return
   if controller_key == "slave":
     time.sleep(float(os.environ.get("FARDRIVER_SLAVE_CONNECT_DELAY", "6")))
