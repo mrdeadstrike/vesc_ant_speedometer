@@ -69,23 +69,36 @@ discover_fardriver_macs() {
   local known_output
   local current_output
   local found_lines
+  local current_found_lines
   local master_macs
   local slave_macs
   local deadline
+  local scan_pass
 
   echo "Ищу FarDriver BLE устройства по имени ${FARDRIVER_NAME_PREFIX} (${FARDRIVER_SCAN_SECONDS} с)..."
   scan_output=""
   deadline=$((SECONDS + FARDRIVER_SCAN_SECONDS))
 
   bluetoothctl scan off >/dev/null 2>&1 || true
+  scan_pass=0
 
   while (( SECONDS < deadline )); do
+    scan_pass=$((scan_pass + 1))
+    echo "FarDriver preflight scan pass ${scan_pass}: bluetoothctl scan ${FARDRIVER_SCAN_STEP_SECONDS}s..."
     current_output="$(
       bluetoothctl --timeout "${FARDRIVER_SCAN_STEP_SECONDS}" scan on 2>&1 || true
     )"
     known_output="$(
       bluetoothctl devices 2>&1 || true
     )"
+    current_found_lines="$(printf '%s\n%s\n' "${known_output}" "${current_output}" \
+      | sed -nE "s/^.*Device ([0-9A-Fa-f:]{17}) (${FARDRIVER_NAME_PREFIX}[^[:space:]]*).*$/\U\1\E \2/p")"
+    if [[ -n "${current_found_lines}" ]]; then
+      echo "FarDriver preflight scan pass ${scan_pass}: fresh candidates:"
+      printf '%s\n' "${current_found_lines}"
+    else
+      echo "FarDriver preflight scan pass ${scan_pass}: fresh candidates: none"
+    fi
 
     scan_output="${scan_output}"$'\n'"${known_output}"$'\n'"${current_output}"
     found_lines="$(printf '%s\n' "${scan_output}" \
