@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUN_LOG="${RUN_LOG:-${SCRIPT_DIR}/run.log}"
 BLE_CONTROLLER_SCRIPT="${SCRIPT_DIR}/start_ble_bridge.sh"
 BLE_BMS_SCRIPT="${SCRIPT_DIR}/start_ble_bms_bridge.sh"
 PYTHON_SCRIPT="${SCRIPT_DIR}/speedometer.py"
@@ -20,6 +21,21 @@ FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT:-/tmp/fardriver-slave-ble}"
 bridge_pid_controller=""
 bridge_pid_controller_slave=""
 bridge_pid_bms=""
+
+exec > >(tee -a "${RUN_LOG}") 2>&1
+echo "===== run.sh $(date '+%Y-%m-%d %H:%M:%S') ====="
+
+pause_on_error() {
+  local code="$1"
+  echo "run.sh завершился с ошибкой ${code}. Лог: ${RUN_LOG}" >&2
+  if [[ -t 0 ]]; then
+    read -r -p "Нажми Enter, чтобы закрыть окно..." _ || true
+  else
+    sleep 20
+  fi
+}
+
+trap 'code=$?; if [[ $code -ne 0 ]]; then pause_on_error "$code"; fi' ERR
 
 cleanup() {
   if [[ -n "${bridge_pid_bms}" ]]; then
@@ -86,13 +102,14 @@ discover_fardriver_macs() {
 
 if [[ -x "${BLE_CONTROLLER_SCRIPT}" ]]; then
   if [[ "${CONTROLLER_TYPE}" == "fardriver" ]]; then
-    if [[ -z "${FARDRIVER_MASTER_MAC}" || -z "${FARDRIVER_SLAVE_MAC}" ]]; then
-      discover_fardriver_macs
-    fi
-
     if [[ "${FARDRIVER_BLE_BACKEND}" == "bleak" ]]; then
       echo "FarDriver BLE backend: bleak, BLE-мосты не запускаются"
+      echo "Поиск контроллеров будет внутри Python по именам: master=${FARDRIVER_MASTER_NAME}, slave=${FARDRIVER_SLAVE_NAME}"
     else
+      if [[ -z "${FARDRIVER_MASTER_MAC}" || -z "${FARDRIVER_SLAVE_MAC}" ]]; then
+        discover_fardriver_macs
+      fi
+
       echo "Запуск BLE-моста FarDriver master..."
       BLE_LABEL="FarDriver master" BLE_DEVICE_MAC="${FARDRIVER_MASTER_MAC}" BLE_VIRTUAL_PORT="${FARDRIVER_MASTER_PORT}" "${BLE_CONTROLLER_SCRIPT}" &
       bridge_pid_controller=$!
