@@ -14,7 +14,8 @@ FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC:-}"
 FARDRIVER_MASTER_NAME="${FARDRIVER_MASTER_NAME:-YuanQuFOC158}"
 FARDRIVER_SLAVE_NAME="${FARDRIVER_SLAVE_NAME:-YuanQuFOC690}"
 FARDRIVER_NAME_PREFIX="${FARDRIVER_NAME_PREFIX:-YuanQuFOC}"
-FARDRIVER_SCAN_SECONDS="${FARDRIVER_SCAN_SECONDS:-10}"
+FARDRIVER_SCAN_SECONDS="${FARDRIVER_SCAN_SECONDS:-30}"
+FARDRIVER_SCAN_STEP_SECONDS="${FARDRIVER_SCAN_STEP_SECONDS:-5}"
 FARDRIVER_PREFLIGHT_SCAN="${FARDRIVER_PREFLIGHT_SCAN:-1}"
 FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT:-/tmp/fardriver-master-ble}"
 FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT:-/tmp/fardriver-slave-ble}"
@@ -63,15 +64,44 @@ sleep 10
 
 discover_fardriver_macs() {
   local scan_output
+  local known_output
+  local current_output
   local found_lines
+  local deadline
 
   echo "Ищу FarDriver BLE устройства по имени ${FARDRIVER_NAME_PREFIX} (${FARDRIVER_SCAN_SECONDS} с)..."
-  scan_output="$(
-    bluetoothctl --timeout "${FARDRIVER_SCAN_SECONDS}" scan on 2>/dev/null || true
-  )"
+  scan_output=""
+  deadline=$((SECONDS + FARDRIVER_SCAN_SECONDS))
 
-  found_lines="$(printf '%s\n' "${scan_output}" \
-    | sed -nE "s/^.*Device ([0-9A-Fa-f:]{17}) (${FARDRIVER_NAME_PREFIX}[^[:space:]]*).*$/\U\1\E \2/p")"
+  bluetoothctl scan off >/dev/null 2>&1 || true
+
+  while (( SECONDS < deadline )); do
+    current_output="$(
+      bluetoothctl --timeout "${FARDRIVER_SCAN_STEP_SECONDS}" scan on 2>&1 || true
+    )"
+    known_output="$(
+      bluetoothctl devices 2>&1 || true
+    )"
+
+    scan_output="${scan_output}"$'\n'"${known_output}"$'\n'"${current_output}"
+    found_lines="$(printf '%s\n' "${scan_output}" \
+      | sed -nE "s/^.*Device ([0-9A-Fa-f:]{17}) (${FARDRIVER_NAME_PREFIX}[^[:space:]]*).*$/\U\1\E \2/p")"
+
+    while read -r mac name; do
+      [[ -z "${mac:-}" ]] && continue
+      if [[ "${name}" == "${FARDRIVER_MASTER_NAME}" ]]; then
+        FARDRIVER_MASTER_MAC="${mac}"
+      elif [[ "${name}" == "${FARDRIVER_SLAVE_NAME}" ]]; then
+        FARDRIVER_SLAVE_MAC="${mac}"
+      fi
+    done <<< "${found_lines}"
+
+    if [[ -n "${FARDRIVER_MASTER_MAC}" && -n "${FARDRIVER_SLAVE_MAC}" ]]; then
+      break
+    fi
+  done
+
+  bluetoothctl scan off >/dev/null 2>&1 || true
 
   if [[ -z "${found_lines}" ]]; then
     echo "Не нашёл BLE-устройства с именем ${FARDRIVER_NAME_PREFIX}." >&2
@@ -81,15 +111,6 @@ discover_fardriver_macs() {
 
   echo "Найдены кандидаты FarDriver:"
   printf '%s\n' "${found_lines}"
-
-  while read -r mac name; do
-    [[ -z "${mac:-}" ]] && continue
-    if [[ "${name}" == "${FARDRIVER_MASTER_NAME}" ]]; then
-      FARDRIVER_MASTER_MAC="${mac}"
-    elif [[ "${name}" == "${FARDRIVER_SLAVE_NAME}" ]]; then
-      FARDRIVER_SLAVE_MAC="${mac}"
-    fi
-  done <<< "${found_lines}"
 
   if [[ -z "${FARDRIVER_MASTER_MAC}" || -z "${FARDRIVER_SLAVE_MAC}" ]]; then
     echo "Не нашёл оба FarDriver по именам: master=${FARDRIVER_MASTER_NAME}, slave=${FARDRIVER_SLAVE_NAME}." >&2
