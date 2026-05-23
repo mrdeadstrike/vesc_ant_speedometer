@@ -1310,6 +1310,51 @@ def fardriver_init_packets():
       print(f"FarDriver: некорректный init hex {item}: {exc}", flush=True)
   return packets
 
+def choose_fardriver_characteristics(client, controller_key):
+  known_notify = {
+    "0000ffe1-0000-1000-8000-00805f9b34fb",
+    "0000fff1-0000-1000-8000-00805f9b34fb",
+    "0000fff4-0000-1000-8000-00805f9b34fb",
+  }
+  known_write = {
+    "0000ffe1-0000-1000-8000-00805f9b34fb",
+    "0000fff1-0000-1000-8000-00805f9b34fb",
+    "0000fff2-0000-1000-8000-00805f9b34fb",
+    "0000fff3-0000-1000-8000-00805f9b34fb",
+  }
+
+  notify_char = None
+  write_char = None
+  fallback_notify = None
+  fallback_write = None
+
+  for service in client.services:
+    print(f"FarDriver {controller_key}: service {service.uuid}", flush=True)
+    for char in service.characteristics:
+      props = set(char.properties or [])
+      uuid_lower = char.uuid.lower()
+      print(f"FarDriver {controller_key}: char {char.uuid} props={','.join(sorted(props))}", flush=True)
+
+      if "notify" in props or "indicate" in props:
+        fallback_notify = fallback_notify or char
+        if uuid_lower in known_notify:
+          notify_char = char
+      if "write" in props or "write-without-response" in props:
+        fallback_write = fallback_write or char
+        if uuid_lower in known_write:
+          write_char = char
+
+  notify_char = notify_char or fallback_notify
+  write_char = write_char or fallback_write or notify_char
+
+  if notify_char is None:
+    raise SerialGetError("FarDriver BLE notify characteristic not found")
+  if write_char is None:
+    raise SerialGetError("FarDriver BLE write characteristic not found")
+
+  print(f"FarDriver {controller_key}: selected notify={notify_char.uuid} write={write_char.uuid}", flush=True)
+  return notify_char, write_char
+
 class FarDriverTelemetry:
   def __init__(self, controller_key='master'):
     self.controller_key = controller_key
@@ -1574,22 +1619,23 @@ async def fardriver_ble_loop(mac, controller_key='master'):
       print(f"FarDriver {controller_key}: BLE connect {device.address} {device.name}", flush=True)
       async with BleakClient(device, timeout=20.0) as client:
         print(f"FarDriver {controller_key}: BLE connected", flush=True)
-        await client.start_notify(notify_uuid, on_notify)
-        print(f"FarDriver {controller_key}: notify {notify_uuid}", flush=True)
+        notify_char, write_char = choose_fardriver_characteristics(client, controller_key)
+        await client.start_notify(notify_char, on_notify)
+        print(f"FarDriver {controller_key}: notify {notify_char.uuid}", flush=True)
 
         for packet in init_packets:
           print(f"FarDriver {controller_key}: init write {packet.hex()}", flush=True)
           try:
-            await client.write_gatt_char(write_uuid, packet, response=False)
+            await client.write_gatt_char(write_char, packet, response=False)
           except Exception:
-            await client.write_gatt_char(write_uuid, packet, response=True)
+            await client.write_gatt_char(write_char, packet, response=True)
           await asyncio.sleep(0.2)
 
         while True:
           try:
-            await client.write_gatt_char(write_uuid, status_poll, response=False)
+            await client.write_gatt_char(write_char, status_poll, response=False)
           except Exception:
-            await client.write_gatt_char(write_uuid, status_poll, response=True)
+            await client.write_gatt_char(write_char, status_poll, response=True)
 
           await asyncio.sleep(2.0)
           if time.time() - last_frame_at > 12:
