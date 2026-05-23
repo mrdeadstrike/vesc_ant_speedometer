@@ -7,6 +7,7 @@ BLE_CONTROLLER_SCRIPT="${SCRIPT_DIR}/start_ble_bridge.sh"
 BLE_BMS_SCRIPT="${SCRIPT_DIR}/start_ble_bms_bridge.sh"
 PYTHON_SCRIPT="${SCRIPT_DIR}/speedometer.py"
 CONTROLLER_TYPE="${CONTROLLER_TYPE:-fardriver}"
+FARDRIVER_BLE_BACKEND="${FARDRIVER_BLE_BACKEND:-bleak}"
 FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC:-}"
 FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC:-}"
 FARDRIVER_NAME_PREFIX="${FARDRIVER_NAME_PREFIX:-YuanQuFOC}"
@@ -103,17 +104,21 @@ if [[ -x "${BLE_CONTROLLER_SCRIPT}" ]]; then
       discover_fardriver_macs
     fi
 
-    echo "Запуск BLE-моста FarDriver master..."
-    BLE_LABEL="FarDriver master" BLE_DEVICE_MAC="${FARDRIVER_MASTER_MAC}" BLE_VIRTUAL_PORT="${FARDRIVER_MASTER_PORT}" "${BLE_CONTROLLER_SCRIPT}" &
-    bridge_pid_controller=$!
+    if [[ "${FARDRIVER_BLE_BACKEND}" == "bleak" ]]; then
+      echo "FarDriver BLE backend: bleak, BLE-мосты не запускаются"
+    else
+      echo "Запуск BLE-моста FarDriver master..."
+      BLE_LABEL="FarDriver master" BLE_DEVICE_MAC="${FARDRIVER_MASTER_MAC}" BLE_VIRTUAL_PORT="${FARDRIVER_MASTER_PORT}" "${BLE_CONTROLLER_SCRIPT}" &
+      bridge_pid_controller=$!
 
-    sleep 2
+      sleep 2
 
-    echo "Запуск BLE-моста FarDriver slave..."
-    BLE_LABEL="FarDriver slave" BLE_DEVICE_MAC="${FARDRIVER_SLAVE_MAC}" BLE_VIRTUAL_PORT="${FARDRIVER_SLAVE_PORT}" "${BLE_CONTROLLER_SCRIPT}" &
-    bridge_pid_controller_slave=$!
+      echo "Запуск BLE-моста FarDriver slave..."
+      BLE_LABEL="FarDriver slave" BLE_DEVICE_MAC="${FARDRIVER_SLAVE_MAC}" BLE_VIRTUAL_PORT="${FARDRIVER_SLAVE_PORT}" "${BLE_CONTROLLER_SCRIPT}" &
+      bridge_pid_controller_slave=$!
 
-    sleep 5
+      sleep 5
+    fi
   else
     echo "Запуск BLE-моста контроллера (${CONTROLLER_TYPE})..."
     CONTROLLER_TYPE="${CONTROLLER_TYPE}" "${BLE_CONTROLLER_SCRIPT}" &
@@ -136,4 +141,4 @@ fi
 # sleep 3
 
 echo "Запуск основного приложения..."
-CONTROLLER_TYPE="${CONTROLLER_TYPE}" FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT}" FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT}" python3 "${PYTHON_SCRIPT}"
+CONTROLLER_TYPE="${CONTROLLER_TYPE}" FARDRIVER_BLE_BACKEND="${FARDRIVER_BLE_BACKEND}" FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC}" FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC}" FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT}" FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT}" python3 "${PYTHON_SCRIPT}"

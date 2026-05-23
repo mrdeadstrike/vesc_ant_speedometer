@@ -1,4 +1,5 @@
 import datetime
+import asyncio
 import signal
 import socket
 import subprocess
@@ -50,6 +51,12 @@ DEFAULT_FARDRIVER_SERIAL_TIMEOUT = 0.2
 CONTROLLER_TYPE = os.environ.get("CONTROLLER_TYPE", "fardriver").strip().lower()
 PYGAME_FULLSCREEN = os.environ.get("PYGAME_FULLSCREEN", "0").strip().lower() in {"1", "true", "on", "yes"}
 ENABLE_BMS = os.environ.get("ENABLE_BMS", "0" if CONTROLLER_TYPE == "fardriver" else "1").strip().lower() not in {"0", "false", "off", "no"}
+FARDRIVER_BLE_BACKEND = os.environ.get("FARDRIVER_BLE_BACKEND", "bleak").strip().lower()
+FARDRIVER_MASTER_MAC = os.environ.get("FARDRIVER_MASTER_MAC", "").strip()
+FARDRIVER_SLAVE_MAC = os.environ.get("FARDRIVER_SLAVE_MAC", "").strip()
+FARDRIVER_SERVICE_UUID = os.environ.get("FARDRIVER_SERVICE_UUID", "0000ffe0-0000-1000-8000-00805f9b34fb")
+FARDRIVER_NOTIFY_UUID = os.environ.get("FARDRIVER_NOTIFY_UUID", "0000ffe1-0000-1000-8000-00805f9b34fb")
+FARDRIVER_WRITE_UUID = os.environ.get("FARDRIVER_WRITE_UUID", FARDRIVER_NOTIFY_UUID)
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -1477,6 +1484,71 @@ def read_fardriver_serial(ser, controller_key='master'):
       if telemetry.apply_frame(candidate):
         last_frame_at = time.time()
 
+async def fardriver_ble_loop(mac, controller_key='master'):
+  try:
+    from bleak import BleakClient
+  except Exception as exc:
+    print(f"FarDriver {controller_key}: bleak не установлен ({exc}). Установи: pip install --user bleak", flush=True)
+    return
+
+  status_poll = fardriver_old_command(0x13, 0x07)
+  notify_uuid = FARDRIVER_NOTIFY_UUID
+  write_uuid = FARDRIVER_WRITE_UUID
+
+  while True:
+    telemetry = FarDriverTelemetry(controller_key)
+    buffer = bytearray()
+    last_frame_at = time.time()
+
+    def on_notify(_, chunk):
+      nonlocal last_frame_at
+      if not chunk:
+        return
+      buffer.extend(bytes(chunk))
+      while len(buffer) >= 16:
+        try:
+          start = buffer.index(0xAA)
+        except ValueError:
+          buffer.clear()
+          break
+        if start:
+          del buffer[:start]
+        if len(buffer) < 16:
+          break
+        candidate = bytes(buffer[:16])
+        if (candidate[1] >> 6) != 2:
+          del buffer[0]
+          continue
+        del buffer[:16]
+        if telemetry.apply_frame(candidate):
+          last_frame_at = time.time()
+
+    try:
+      print(f"FarDriver {controller_key}: BLE connect {mac}", flush=True)
+      async with BleakClient(mac, timeout=12.0) as client:
+        print(f"FarDriver {controller_key}: BLE connected", flush=True)
+        await client.start_notify(notify_uuid, on_notify)
+        print(f"FarDriver {controller_key}: notify {notify_uuid}", flush=True)
+
+        while True:
+          try:
+            await client.write_gatt_char(write_uuid, status_poll, response=False)
+          except Exception:
+            await client.write_gatt_char(write_uuid, status_poll, response=True)
+
+          await asyncio.sleep(2.0)
+          if time.time() - last_frame_at > 12:
+            raise SerialGetError("FarDriver BLE no telemetry")
+    except Exception as exc:
+      print(f"FarDriver {controller_key}: BLE reconnect reason: {exc}", flush=True)
+      await asyncio.sleep(2.0)
+
+def read_fardriver_ble(mac, controller_key='master'):
+  if not mac:
+    print(f"FarDriver {controller_key}: MAC не задан", flush=True)
+    return
+  asyncio.run(fardriver_ble_loop(mac, controller_key))
+
 
 ######### CONTROLLER READ ##########
 def read_serial(ser):
@@ -1774,16 +1846,28 @@ def read_сontrollers(
       time.sleep(2)
 
 if CONTROLLER_TYPE == "fardriver":
-  threading.Thread(
-    target=read_сontrollers,
-    kwargs={"port_name": FARDRIVER_MASTER_PORT, "controller_key": "master"},
-    daemon=True
-  ).start()
-  threading.Thread(
-    target=read_сontrollers,
-    kwargs={"port_name": FARDRIVER_SLAVE_PORT, "controller_key": "slave"},
-    daemon=True
-  ).start()
+  if FARDRIVER_BLE_BACKEND == "bleak":
+    threading.Thread(
+      target=read_fardriver_ble,
+      args=(FARDRIVER_MASTER_MAC, "master"),
+      daemon=True
+    ).start()
+    threading.Thread(
+      target=read_fardriver_ble,
+      args=(FARDRIVER_SLAVE_MAC, "slave"),
+      daemon=True
+    ).start()
+  else:
+    threading.Thread(
+      target=read_сontrollers,
+      kwargs={"port_name": FARDRIVER_MASTER_PORT, "controller_key": "master"},
+      daemon=True
+    ).start()
+    threading.Thread(
+      target=read_сontrollers,
+      kwargs={"port_name": FARDRIVER_SLAVE_PORT, "controller_key": "slave"},
+      daemon=True
+    ).start()
 else:
   threading.Thread(target=read_сontrollers, kwargs={"port_name": VESC_PORT_OVERRIDE}, daemon=True).start()
 
