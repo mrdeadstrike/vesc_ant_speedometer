@@ -82,6 +82,12 @@ FARDRIVER_CACHE_FILE = os.environ.get("FARDRIVER_CACHE_FILE", os.path.join(os.pa
 FARDRIVER_DEBUG_SCAN_ALL = os.environ.get("FARDRIVER_DEBUG_SCAN_ALL", "0").strip().lower() in {"1", "true", "on", "yes"}
 FARDRIVER_DEBUG_TRACEBACK = os.environ.get("FARDRIVER_DEBUG_TRACEBACK", "1").strip().lower() not in {"0", "false", "off", "no"}
 FARDRIVER_RECONNECT_DELAY = float(os.environ.get("FARDRIVER_RECONNECT_DELAY", "1"))
+GPS_ENABLED_ENV = os.environ.get("GPS_ENABLED")
+GPS_ENABLED = (GPS_ENABLED_ENV if GPS_ENABLED_ENV is not None else ("0" if platform.system() == "Darwin" else "1")).strip().lower() not in {"0", "false", "off", "no"}
+GPS_SERIAL_PORT = os.environ.get("GPS_SERIAL_PORT", "").strip()
+GPS_BAUDRATE = int(os.environ.get("GPS_BAUDRATE", "9600"))
+GPS_SERIAL_TIMEOUT = float(os.environ.get("GPS_SERIAL_TIMEOUT", "1"))
+GPS_STALE_SECONDS = float(os.environ.get("GPS_STALE_SECONDS", "5"))
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -271,6 +277,9 @@ data = {
   'power': 0,
   'bms_voltage': 0,
   'voltage_down': 0,
+  'gps_speed': 0.0,
+  'gps_satellites': 0,
+  'gps_last_update': 0.0,
 }
 
 FARDRIVER_LATEST_LOCK = threading.Lock()
@@ -2374,11 +2383,154 @@ def read_bms(
       time.sleep(2)
 
 
+def nmea_float(value):
+  try:
+    return float(value)
+  except (TypeError, ValueError):
+    return None
+
+def nmea_int(value):
+  try:
+    return int(value)
+  except (TypeError, ValueError):
+    return None
+
+def parse_nmea_sentence(line):
+  if not line.startswith("$"):
+    return
+  body = line[1:].split("*", 1)[0]
+  parts = body.split(",")
+  if not parts:
+    return
+  sentence_type = parts[0][-3:]
+  now = time.time()
+
+  if sentence_type == "RMC":
+    # $GPRMC,time,status,lat,N,lon,E,speed_knots,...
+    if len(parts) > 7 and parts[2] == "A":
+      speed_knots = nmea_float(parts[7])
+      if speed_knots is not None:
+        data['gps_speed'] = max(0.0, speed_knots * 1.852)
+        data['gps_last_update'] = now
+  elif sentence_type == "VTG":
+    # $GPVTG,...,speed_knots,N,speed_kmh,K
+    if len(parts) > 7:
+      speed_kmh = nmea_float(parts[7])
+      if speed_kmh is not None:
+        data['gps_speed'] = max(0.0, speed_kmh)
+        data['gps_last_update'] = now
+  elif sentence_type in {"GGA", "GNS"}:
+    # GGA/GNS: satellites used in fix.
+    if len(parts) > 7:
+      satellites = nmea_int(parts[7])
+      if satellites is not None:
+        data['gps_satellites'] = max(0, satellites)
+        data['gps_last_update'] = now
+  elif sentence_type == "GSV":
+    # GSV: total satellites in view.
+    if len(parts) > 3:
+      satellites = nmea_int(parts[3])
+      if satellites is not None:
+        data['gps_satellites'] = max(0, satellites)
+        data['gps_last_update'] = now
+
+def iter_gps_port_candidates(explicit_port=None):
+  seen = set()
+
+  def emit(candidate, reason=None):
+    if candidate and candidate not in seen:
+      if reason:
+        print(f"GPS: кандидат порта {candidate} ({reason})", flush=True)
+      seen.add(candidate)
+      return candidate
+    return None
+
+  configured = [
+    (explicit_port, "параметр"),
+    (GPS_SERIAL_PORT, "GPS_SERIAL_PORT"),
+  ]
+  for candidate, reason in configured:
+    value = emit(candidate, reason)
+    if value:
+      yield value
+
+  patterns = []
+  if IS_MAC:
+    patterns.extend(['/dev/tty.usbmodem*', '/dev/tty.usbserial*'])
+  else:
+    patterns.extend([
+      '/dev/serial/by-id/*u-blox*',
+      '/dev/serial/by-id/*U-Blox*',
+      '/dev/serial/by-id/*GPS*',
+      '/dev/serial/by-id/*gps*',
+      '/dev/ttyACM*',
+      '/dev/ttyUSB*',
+    ])
+
+  for pattern in patterns:
+    for candidate in sorted(glob.glob(pattern)):
+      value = emit(candidate, f"шаблон {pattern}")
+      if value:
+        yield value
+
+def read_gps(port_name=None, baudrate=GPS_BAUDRATE):
+  while True:
+    ser = None
+    current_port = None
+    for candidate in iter_gps_port_candidates(port_name):
+      try:
+        ser = serial.Serial(candidate, baudrate, timeout=GPS_SERIAL_TIMEOUT)
+        current_port = candidate
+        print(f"GPS port open: {candidate} baud={baudrate}", flush=True)
+        try:
+          ser.reset_input_buffer()
+        except Exception:
+          pass
+        break
+      except Exception as exc:
+        print(f"GPS: не удалось открыть {candidate}: {exc}", flush=True)
+        ser = None
+
+    if ser is None:
+      print("GPS: порты не открылись, повтор через 5 секунд", flush=True)
+      time.sleep(5)
+      continue
+
+    last_sentence_at = time.time()
+    try:
+      while True:
+        raw_line = ser.readline()
+        if not raw_line:
+          if time.time() - last_sentence_at > 10:
+            raise SerialGetError("GPS NMEA timeout")
+          continue
+        line = raw_line.decode("ascii", errors="ignore").strip()
+        if not line:
+          continue
+        if line.startswith("$"):
+          last_sentence_at = time.time()
+          parse_nmea_sentence(line)
+    except Exception as exc:
+      print(f"GPS ошибка чтения ({current_port}): {exc}", flush=True)
+      time.sleep(2)
+    finally:
+      try:
+        ser.close()
+      except Exception:
+        pass
+    time.sleep(2)
+
+
 
 if ENABLE_BMS:
   threading.Thread(target=read_bms, kwargs={"port_name": BMS_PORT_OVERRIDE}, daemon=True).start()
 else:
   print("BMS чтение отключено (ENABLE_BMS=0)", flush=True)
+
+if GPS_ENABLED:
+  threading.Thread(target=read_gps, kwargs={"port_name": GPS_SERIAL_PORT or None}, daemon=True).start()
+else:
+  print("GPS чтение отключено (GPS_ENABLED=0)", flush=True)
 
 ######## INTERFACE ###########
 import pygame
@@ -2407,6 +2559,7 @@ font_large = ThemedFont(pygame.font.SysFont('Arial', 310))
 font_medium = ThemedFont(pygame.font.SysFont('Arial', 50, True))
 font_small = ThemedFont(pygame.font.SysFont('Arial', 40, True))
 font_tick = ThemedFont(pygame.font.SysFont('Arial', 30, True))
+font_gps = ThemedFont(pygame.font.SysFont('Arial', 24, True))
 
 def render_force_color(font_obj, text, color, background=None):
   base_font = font_obj._font if isinstance(font_obj, ThemedFont) else font_obj
@@ -2557,6 +2710,14 @@ def draw_text_right(surface, text, font, color, x, y):
   render = font.render(text, True, color)
   rect = render.get_rect(topright=(x, y + font_y_shift))
   surface.blit(render, rect)
+
+def draw_gps_overlay(surface):
+  gps_age = time.time() - data.get('gps_last_update', 0)
+  gps_stale = gps_age > GPS_STALE_SECONDS
+  speed_text = "GPS --" if gps_stale else f"GPS {data.get('gps_speed', 0.0):.1f}"
+  sats_text = "SAT --" if gps_stale else f"SAT {int(data.get('gps_satellites', 0))}"
+  draw_text_left(surface, speed_text, font_gps, RED_COLOR, 10, 58)
+  draw_text_right(surface, sats_text, font_gps, RED_COLOR, WIDTH - 10, 58)
 
 def draw_cells_block(screen, startY):
   x_shift = WIDTH * 0.425
@@ -2874,15 +3035,16 @@ while running:
       x = WIDTH * 0.5 + dx - stats_bar_width / 2
       draw_progress_bar(screen, x, stats_block_y, stats_bar_width, stats_bar_height, value, max_val, text, color)
 
-    rpm_display = int(abs(data['master'].get('rpm', 0)))
-    phase_current_display = int(abs(data['master']['motor_current']))
-    draw_text_center(
-      screen,
-      f"{get_display_power()}W  {rpm_display}rpm  Ф{phase_current_display}A",
-      font_small,
-      (0, 0, 0),
-      295 + CONTENT_Y_OFFSET
-    )
+    # Временный overlay мощности/оборотов/фазного тока пока скрыт.
+    # rpm_display = int(abs(data['master'].get('rpm', 0)))
+    # phase_current_display = int(abs(data['master']['motor_current']))
+    # draw_text_center(
+    #   screen,
+    #   f"{get_display_power()}W  {rpm_display}rpm  Ф{phase_current_display}A",
+    #   font_small,
+    #   (0, 0, 0),
+    #   295 + CONTENT_Y_OFFSET
+    # )
 
     # Когда ослабление магнитного поля активно рисуем рамку
     #if average_duty >= 85:
@@ -3460,6 +3622,8 @@ while running:
     if mirror_top_rect.collidepoint(mouse) and click[0] and (not block_touch or not IS_RASPBERY):
       mirror_controller.request_update()
       PAGE_NAME = PAGE_MIRROR
+
+    draw_gps_overlay(screen)
 
   elif PAGE_NAME == PAGE_MIRROR:
     mirror_snapshot = mirror_controller.get_snapshot()
