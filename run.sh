@@ -11,6 +11,8 @@ CONTROLLER_TYPE="${CONTROLLER_TYPE:-fardriver}"
 FARDRIVER_BLE_BACKEND="${FARDRIVER_BLE_BACKEND:-bleak}"
 FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC:-}"
 FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC:-}"
+FARDRIVER_MASTER_MACS="${FARDRIVER_MASTER_MACS:-}"
+FARDRIVER_SLAVE_MACS="${FARDRIVER_SLAVE_MACS:-}"
 FARDRIVER_MASTER_NAME="${FARDRIVER_MASTER_NAME:-YuanQuFOC158}"
 FARDRIVER_SLAVE_NAME="${FARDRIVER_SLAVE_NAME:-YuanQuFOC690}"
 FARDRIVER_NAME_PREFIX="${FARDRIVER_NAME_PREFIX:-YuanQuFOC}"
@@ -67,6 +69,8 @@ discover_fardriver_macs() {
   local known_output
   local current_output
   local found_lines
+  local master_macs
+  local slave_macs
   local deadline
 
   echo "Ищу FarDriver BLE устройства по имени ${FARDRIVER_NAME_PREFIX} (${FARDRIVER_SCAN_SECONDS} с)..."
@@ -112,6 +116,15 @@ discover_fardriver_macs() {
   echo "Найдены кандидаты FarDriver:"
   printf '%s\n' "${found_lines}"
 
+  master_macs="$(printf '%s\n' "${found_lines}" | awk -v target="${FARDRIVER_MASTER_NAME}" '$2 == target { items[++count] = $1 } END { for (i = 1; i <= count; i++) if (!seen[items[i]]++) { out = out (out ? "," : "") items[i] } print out }')"
+  slave_macs="$(printf '%s\n' "${found_lines}" | awk -v target="${FARDRIVER_SLAVE_NAME}" '$2 == target { items[++count] = $1 } END { for (i = 1; i <= count; i++) if (!seen[items[i]]++) { out = out (out ? "," : "") items[i] } print out }')"
+  if [[ -n "${master_macs}" ]]; then
+    FARDRIVER_MASTER_MACS="${master_macs}"
+  fi
+  if [[ -n "${slave_macs}" ]]; then
+    FARDRIVER_SLAVE_MACS="${slave_macs}"
+  fi
+
   if [[ -z "${FARDRIVER_MASTER_MAC}" || -z "${FARDRIVER_SLAVE_MAC}" ]]; then
     echo "Не нашёл оба FarDriver по именам: master=${FARDRIVER_MASTER_NAME}, slave=${FARDRIVER_SLAVE_NAME}." >&2
     return 1
@@ -119,6 +132,8 @@ discover_fardriver_macs() {
 
   echo "FarDriver master: ${FARDRIVER_MASTER_NAME} ${FARDRIVER_MASTER_MAC}"
   echo "FarDriver slave : ${FARDRIVER_SLAVE_NAME} ${FARDRIVER_SLAVE_MAC}"
+  echo "FarDriver master candidates: ${FARDRIVER_MASTER_MACS}"
+  echo "FarDriver slave candidates : ${FARDRIVER_SLAVE_MACS}"
 }
 
 if [[ -x "${BLE_CONTROLLER_SCRIPT}" ]]; then
@@ -168,4 +183,4 @@ fi
 # sleep 3
 
 echo "Запуск основного приложения..."
-CONTROLLER_TYPE="${CONTROLLER_TYPE}" FARDRIVER_BLE_BACKEND="${FARDRIVER_BLE_BACKEND}" FARDRIVER_MASTER_NAME="${FARDRIVER_MASTER_NAME}" FARDRIVER_SLAVE_NAME="${FARDRIVER_SLAVE_NAME}" FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC}" FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC}" FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT}" FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT}" python3 "${PYTHON_SCRIPT}"
+CONTROLLER_TYPE="${CONTROLLER_TYPE}" FARDRIVER_BLE_BACKEND="${FARDRIVER_BLE_BACKEND}" FARDRIVER_MASTER_NAME="${FARDRIVER_MASTER_NAME}" FARDRIVER_SLAVE_NAME="${FARDRIVER_SLAVE_NAME}" FARDRIVER_MASTER_MAC="${FARDRIVER_MASTER_MAC}" FARDRIVER_SLAVE_MAC="${FARDRIVER_SLAVE_MAC}" FARDRIVER_MASTER_MACS="${FARDRIVER_MASTER_MACS}" FARDRIVER_SLAVE_MACS="${FARDRIVER_SLAVE_MACS}" FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT}" FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT}" python3 "${PYTHON_SCRIPT}"
