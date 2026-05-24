@@ -51,7 +51,7 @@ BMS_PORT_OVERRIDE = "/tmp/bms-ble"
 DEFAULT_VESC_SERIAL_TIMEOUT = 0.5
 DEFAULT_FARDRIVER_SERIAL_TIMEOUT = 0.2
 CONTROLLER_TYPE = os.environ.get("CONTROLLER_TYPE", "fardriver").strip().lower()
-PYGAME_FULLSCREEN = os.environ.get("PYGAME_FULLSCREEN", "0").strip().lower() in {"1", "true", "on", "yes"}
+PYGAME_FULLSCREEN = os.environ.get("PYGAME_FULLSCREEN", "1").strip().lower() in {"1", "true", "on", "yes"}
 ENABLE_BMS = os.environ.get("ENABLE_BMS", "1").strip().lower() not in {"0", "false", "off", "no"}
 BMS_BACKEND = os.environ.get("BMS_BACKEND", "bleak" if CONTROLLER_TYPE == "fardriver" else "serial").strip().lower()
 BMS_BLE_NAME_PREFIX = os.environ.get("BMS_BLE_NAME_PREFIX", "ANT-BLE").strip()
@@ -64,6 +64,8 @@ BMS_BLE_CONNECT_TIMEOUT = float(os.environ.get("BMS_BLE_CONNECT_TIMEOUT", "15"))
 BMS_BLE_RESPONSE_TIMEOUT = float(os.environ.get("BMS_BLE_RESPONSE_TIMEOUT", "8"))
 BMS_BLE_POLL_INTERVAL = float(os.environ.get("BMS_BLE_POLL_INTERVAL", "1"))
 BMS_BLE_RECONNECT_DELAY = float(os.environ.get("BMS_BLE_RECONNECT_DELAY", "2"))
+BMS_BLE_DIRECT_CONNECT = os.environ.get("BMS_BLE_DIRECT_CONNECT", "1").strip().lower() not in {"0", "false", "off", "no"}
+BMS_BLE_PAIR = os.environ.get("BMS_BLE_PAIR", "0").strip().lower() in {"1", "true", "on", "yes"}
 BMS_BLE_DEBUG_NOTIFY = int(os.environ.get("BMS_BLE_DEBUG_NOTIFY", "4"))
 BMS_BLE_DEBUG_SCAN = os.environ.get("BMS_BLE_DEBUG_SCAN", "1").strip().lower() not in {"0", "false", "off", "no"}
 BMS_BLE_DEBUG_BUFFER_BYTES = int(os.environ.get("BMS_BLE_DEBUG_BUFFER_BYTES", "80"))
@@ -1783,7 +1785,13 @@ class FarDriverTelemetry:
         if item.get('rpm') is not None:
           data[key]['rpm'] = item['rpm']
 
-      speed_source = fresh.get(FARDRIVER_SPEED_CONTROLLER) or FARDRIVER_LATEST.get(FARDRIVER_SPEED_CONTROLLER, {})
+      speed_source = None
+      if fresh.get('master', {}).get('speed_kmh') is not None:
+        speed_source = fresh['master']
+      elif fresh.get('slave', {}).get('speed_kmh') is not None:
+        speed_source = fresh['slave']
+      else:
+        speed_source = {}
       if speed_source.get('speed_kmh') is not None:
         data['speed'] = speed_source['speed_kmh']
 
@@ -2456,14 +2464,14 @@ def bms_ble_device_match_reason(device) -> tuple[bool, str]:
   service_uuids = [str(u).lower() for u in metadata.get("uuids", [])]
   has_service = BMS_BLE_SERVICE_UUID.lower() in service_uuids
 
-  if wanted_mac and address == wanted_mac:
-    return True, "MAC совпал с BMS_BLE_MAC"
+  if wanted_mac:
+    if address == wanted_mac:
+      return True, "MAC совпал с BMS_BLE_MAC"
+    return False, f"MAC не совпал: {address or '-'} != {wanted_mac}"
   if BMS_BLE_NAME_PREFIX and name.startswith(BMS_BLE_NAME_PREFIX):
     return True, f"имя начинается с {BMS_BLE_NAME_PREFIX}"
   if has_service and "yuanqufoc" not in name_lower and "fardriver" not in name_lower:
     return True, f"рекламирует service {BMS_BLE_SERVICE_UUID}"
-  if wanted_mac:
-    return False, f"MAC не совпал: {address or '-'} != {wanted_mac}"
   if name_lower.startswith("yuanqufoc") or "fardriver" in name_lower:
     return False, "похоже на FarDriver, не BMS"
   if BMS_BLE_NAME_PREFIX and name:
