@@ -52,7 +52,19 @@ DEFAULT_VESC_SERIAL_TIMEOUT = 0.5
 DEFAULT_FARDRIVER_SERIAL_TIMEOUT = 0.2
 CONTROLLER_TYPE = os.environ.get("CONTROLLER_TYPE", "fardriver").strip().lower()
 PYGAME_FULLSCREEN = os.environ.get("PYGAME_FULLSCREEN", "0").strip().lower() in {"1", "true", "on", "yes"}
-ENABLE_BMS = os.environ.get("ENABLE_BMS", "0" if CONTROLLER_TYPE == "fardriver" else "1").strip().lower() not in {"0", "false", "off", "no"}
+ENABLE_BMS = os.environ.get("ENABLE_BMS", "1").strip().lower() not in {"0", "false", "off", "no"}
+BMS_BACKEND = os.environ.get("BMS_BACKEND", "bleak" if CONTROLLER_TYPE == "fardriver" else "serial").strip().lower()
+BMS_BLE_NAME_PREFIX = os.environ.get("BMS_BLE_NAME_PREFIX", "ANT-BLE").strip()
+BMS_BLE_MAC = os.environ.get("BMS_BLE_MAC", "").strip()
+BMS_BLE_SERVICE_UUID = os.environ.get("BMS_BLE_SERVICE_UUID", "0000ffe0-0000-1000-8000-00805f9b34fb")
+BMS_BLE_NOTIFY_UUID = os.environ.get("BMS_BLE_NOTIFY_UUID", "0000ffe1-0000-1000-8000-00805f9b34fb")
+BMS_BLE_WRITE_UUID = os.environ.get("BMS_BLE_WRITE_UUID", BMS_BLE_NOTIFY_UUID)
+BMS_BLE_SCAN_TIMEOUT = float(os.environ.get("BMS_BLE_SCAN_TIMEOUT", "8"))
+BMS_BLE_CONNECT_TIMEOUT = float(os.environ.get("BMS_BLE_CONNECT_TIMEOUT", "15"))
+BMS_BLE_RESPONSE_TIMEOUT = float(os.environ.get("BMS_BLE_RESPONSE_TIMEOUT", "8"))
+BMS_BLE_POLL_INTERVAL = float(os.environ.get("BMS_BLE_POLL_INTERVAL", "1"))
+BMS_BLE_RECONNECT_DELAY = float(os.environ.get("BMS_BLE_RECONNECT_DELAY", "2"))
+BMS_BLE_DEBUG_NOTIFY = int(os.environ.get("BMS_BLE_DEBUG_NOTIFY", "4"))
 FARDRIVER_BLE_BACKEND = os.environ.get("FARDRIVER_BLE_BACKEND", "bleak").strip().lower()
 FARDRIVER_MASTER_MAC = os.environ.get("FARDRIVER_MASTER_MAC", "").strip()
 FARDRIVER_SLAVE_MAC = os.environ.get("FARDRIVER_SLAVE_MAC", "").strip()
@@ -88,7 +100,7 @@ GPS_SERIAL_PORT = os.environ.get("GPS_SERIAL_PORT", "").strip()
 GPS_BAUDRATE = int(os.environ.get("GPS_BAUDRATE", "9600"))
 GPS_SERIAL_TIMEOUT = float(os.environ.get("GPS_SERIAL_TIMEOUT", "1"))
 GPS_STALE_SECONDS = float(os.environ.get("GPS_STALE_SECONDS", "5"))
-GPS_MAX_REASONABLE_SPEED_KMH = float(os.environ.get("GPS_MAX_REASONABLE_SPEED_KMH", "120"))
+GPS_MAX_REASONABLE_SPEED_KMH = float(os.environ.get("GPS_MAX_REASONABLE_SPEED_KMH", "200"))
 
 GREEN_COLOR = (0, 160, 0)
 GREEN_LIGHT = (0, 210, 0)
@@ -2296,6 +2308,270 @@ def parse_current(bms_data: bytes) -> float | None:
   return round(current, 2)
 
 
+def ant_crc16_modbus(payload: bytes) -> int:
+  crc = 0xFFFF
+  for byte in payload:
+    crc ^= byte
+    for _ in range(8):
+      if crc & 0x0001:
+        crc = (crc >> 1) ^ 0xA001
+      else:
+        crc >>= 1
+  return crc & 0xFFFF
+
+
+def build_ant_bms_ble_command(function: int, address: int, value: int) -> bytes:
+  frame = bytearray([
+    0x7E,
+    0xA1,
+    function & 0xFF,
+    address & 0xFF,
+    (address >> 8) & 0xFF,
+    value & 0xFF,
+  ])
+  crc = ant_crc16_modbus(bytes(frame[1:]))
+  frame.extend([crc & 0xFF, (crc >> 8) & 0xFF, 0xAA, 0x55])
+  return bytes(frame)
+
+
+ANT_BMS_BLE_STATUS_COMMAND = build_ant_bms_ble_command(0x01, 0x0000, 0xBE)
+
+
+def parse_ant_bms_ble_status(frame: bytes) -> None:
+  global BMS_LOST
+  if len(frame) < 10 or not frame.startswith(b"\x7E\xA1") or frame[2] != 0x11:
+    raise SerialGetError(f"unexpected ANT BLE status frame: len={len(frame)} head={frame[:6].hex()}")
+
+  expected_len = 6 + frame[5] + 4
+  if len(frame) != expected_len:
+    raise SerialGetError(f"ANT BLE status length mismatch: expected {expected_len}, got {len(frame)}")
+
+  crc = ant_crc16_modbus(frame[1:expected_len - 4])
+  expected_crc = frame[expected_len - 4] | (frame[expected_len - 3] << 8)
+  if crc != expected_crc:
+    raise SerialGetError(f"ANT BLE status CRC mismatch: got {crc:04x}, expected {expected_crc:04x}")
+
+  def u16(offset):
+    return int.from_bytes(frame[offset:offset + 2], byteorder="little", signed=False)
+
+  def i16(offset):
+    return int.from_bytes(frame[offset:offset + 2], byteorder="little", signed=True)
+
+  temperature_count = min(frame[8], 4)
+  cell_count = min(frame[9], CELL_COUNT)
+  offset = 34
+
+  cell_voltages = []
+  for i in range(cell_count):
+    cell_voltages.append(u16(offset + i * 2) * 0.001)
+
+  while len(cell_voltages) < CELL_COUNT:
+    cell_voltages.append(0.0)
+
+  offset += frame[9] * 2
+  external_temps = []
+  for i in range(temperature_count):
+    raw_temp = i16(offset + i * 2)
+    external_temps.append(0 if raw_temp <= -40 else raw_temp)
+
+  while len(external_temps) < 4:
+    external_temps.append(0)
+
+  offset += frame[8] * 2
+  mosfet_temp = i16(offset)
+  balance_temp = i16(offset + 2)
+  total_voltage = u16(offset + 4) * 0.01
+  current = i16(offset + 6) * 0.1
+  soc = u16(offset + 8)
+
+  data['bms_temp'] = {
+    'mosfet_temp': mosfet_temp,
+    'balance_temp': balance_temp,
+    'external_temp_0': external_temps[0],
+    'external_temp_1': external_temps[1],
+    'external_temp_2': external_temps[2],
+    'external_temp_3': external_temps[3],
+  }
+  data['bms_current'] = current
+  data['power'] = int(total_voltage * current)
+  data['bms_voltage'] = total_voltage
+  data['cells_v'] = cell_voltages
+  if 0 <= soc <= 100:
+    data['battery_level'] = soc
+  PREV_VALS['bms_last_update'] = time.time()
+  BMS_LOST = False
+
+
+def assemble_ant_bms_ble_frame(buffer: bytearray, chunk: bytes) -> bytes | None:
+  if chunk.startswith(b"\x7E\xA1"):
+    buffer.clear()
+  buffer.extend(chunk)
+
+  start = buffer.find(b"\x7E\xA1")
+  if start > 0:
+    del buffer[:start]
+  elif start < 0:
+    buffer.clear()
+    return None
+
+  if len(buffer) < 10:
+    return None
+
+  expected_len = 6 + buffer[5] + 4
+  if expected_len < 10 or expected_len > 220:
+    print(f"BMS BLE: некорректная длина кадра {expected_len}, buffer={buffer.hex()}", flush=True)
+    buffer.clear()
+    return None
+
+  if len(buffer) < expected_len:
+    return None
+
+  frame = bytes(buffer[:expected_len])
+  del buffer[:expected_len]
+  if not frame.endswith(b"\xAA\x55"):
+    print(f"BMS BLE: кадр без хвоста AA55: {frame.hex()}", flush=True)
+    return None
+  return frame
+
+
+def bms_ble_device_matches(device) -> bool:
+  wanted_mac = BMS_BLE_MAC.lower()
+  address = (getattr(device, "address", "") or "").lower()
+  name = (getattr(device, "name", "") or "")
+  if wanted_mac and address == wanted_mac:
+    return True
+  if BMS_BLE_NAME_PREFIX and name.startswith(BMS_BLE_NAME_PREFIX):
+    return True
+  metadata = getattr(device, "metadata", {}) or {}
+  service_uuids = [str(u).lower() for u in metadata.get("uuids", [])]
+  return BMS_BLE_SERVICE_UUID.lower() in service_uuids and "yuanqufoc" not in name.lower()
+
+
+async def find_ant_bms_ble_device():
+  from bleak import BleakScanner
+
+  print(f"BMS BLE: scan {BMS_BLE_SCAN_TIMEOUT:.1f}s, name_prefix={BMS_BLE_NAME_PREFIX or '-'}, mac={BMS_BLE_MAC or '-'}", flush=True)
+  with FARDRIVER_BLE_CONNECT_LOCK:
+    devices = await BleakScanner.discover(timeout=BMS_BLE_SCAN_TIMEOUT)
+
+  print(f"BMS BLE: найдено устройств: {len(devices)}", flush=True)
+  for device in devices:
+    metadata = getattr(device, "metadata", {}) or {}
+    uuids = ",".join(metadata.get("uuids", []) or [])
+    rssi = getattr(device, "rssi", None)
+    print(
+      f"BMS BLE: seen name={getattr(device, 'name', None)} address={getattr(device, 'address', None)} rssi={rssi} uuids={uuids}",
+      flush=True
+    )
+
+  candidates = [device for device in devices if bms_ble_device_matches(device)]
+  if not candidates:
+    return None
+
+  candidates.sort(key=lambda d: getattr(d, "rssi", -999) if getattr(d, "rssi", None) is not None else -999, reverse=True)
+  print("BMS BLE: кандидаты:", flush=True)
+  for device in candidates:
+    print(f"  name={device.name} address={device.address} rssi={getattr(device, 'rssi', None)}", flush=True)
+  return candidates[0]
+
+
+async def read_bms_ble_async():
+  global BMS_LOST
+  from bleak import BleakClient
+
+  while True:
+    target = await find_ant_bms_ble_device()
+    if target is None:
+      BMS_LOST = True
+      print("BMS BLE: ANT-BLE устройство не найдено, повтор", flush=True)
+      await asyncio.sleep(BMS_BLE_RECONNECT_DELAY)
+      continue
+
+    buffer = bytearray()
+    pending_status = {"future": None}
+    notify_counter = 0
+
+    def on_notify(sender, chunk: bytearray):
+      nonlocal notify_counter
+      notify_counter += 1
+      chunk_bytes = bytes(chunk)
+      if notify_counter <= BMS_BLE_DEBUG_NOTIFY:
+        print(f"BMS BLE notify {notify_counter}: sender={sender} data={chunk_bytes.hex()}", flush=True)
+
+      frame = assemble_ant_bms_ble_frame(buffer, chunk_bytes)
+      if not frame:
+        return
+
+      if frame[2] != 0x11:
+        print(f"BMS BLE: пропущен кадр func=0x{frame[2]:02x} len={len(frame)}", flush=True)
+        return
+
+      future = pending_status.get("future")
+      if future is not None and not future.done():
+        future.set_result(frame)
+
+    try:
+      print(f"BMS BLE: connect name={target.name} address={target.address}", flush=True)
+      with FARDRIVER_BLE_CONNECT_LOCK:
+        client = BleakClient(target, timeout=BMS_BLE_CONNECT_TIMEOUT)
+        await client.connect()
+
+      try:
+        services = await client.get_services()
+      except Exception:
+        services = client.services
+      print("BMS BLE: connected, services:", flush=True)
+      for service in services:
+        print(f"  service {service.uuid}", flush=True)
+        for char in service.characteristics:
+          print(f"    char {char.uuid} props={','.join(char.properties)}", flush=True)
+
+      notify_char = BMS_BLE_NOTIFY_UUID
+      write_char = BMS_BLE_WRITE_UUID
+      await client.start_notify(notify_char, on_notify)
+      print(f"BMS BLE: notify started {notify_char}, write {write_char}", flush=True)
+      BMS_LOST = False
+
+      try:
+        while client.is_connected:
+          loop = asyncio.get_running_loop()
+          pending_status["future"] = loop.create_future()
+          await client.write_gatt_char(write_char, ANT_BMS_BLE_STATUS_COMMAND, response=False)
+          try:
+            frame = await asyncio.wait_for(pending_status["future"], timeout=BMS_BLE_RESPONSE_TIMEOUT)
+            parse_ant_bms_ble_status(frame)
+            print(
+              f"BMS BLE: {data['bms_voltage']:.1f}V {data['bms_current']:.1f}A "
+              f"{int(data['battery_level'])}% cells={sum(1 for v in data['cells_v'] if v > 0)}",
+              flush=True
+            )
+          except asyncio.TimeoutError:
+            BMS_LOST = True
+            print("BMS BLE: timeout ответа на status", flush=True)
+            break
+          await asyncio.sleep(BMS_BLE_POLL_INTERVAL)
+      finally:
+        try:
+          await client.stop_notify(notify_char)
+        except Exception:
+          pass
+        await client.disconnect()
+    except Exception as exc:
+      BMS_LOST = True
+      print(f"BMS BLE ошибка: {type(exc).__name__}: {exc}", flush=True)
+      if os.environ.get("BMS_BLE_DEBUG_TRACEBACK", "1").strip().lower() not in {"0", "false", "off", "no"}:
+        traceback.print_exc()
+
+    await asyncio.sleep(BMS_BLE_RECONNECT_DELAY)
+
+
+def read_bms_ble():
+  try:
+    asyncio.run(read_bms_ble_async())
+  except Exception as exc:
+    print(f"BMS BLE fatal: {type(exc).__name__}: {exc}", flush=True)
+
+
 def read_bms_data(ser):
   while True:
     ser.write(b'\x5A\x5A\x00\x00\x00\x00')
@@ -2558,7 +2834,12 @@ def read_gps(port_name=None, baudrate=GPS_BAUDRATE):
 
 
 if ENABLE_BMS:
-  threading.Thread(target=read_bms, kwargs={"port_name": BMS_PORT_OVERRIDE}, daemon=True).start()
+  if BMS_BACKEND in {"ble", "bleak", "bluetooth"}:
+    print("BMS чтение включено через BLE/bleak", flush=True)
+    threading.Thread(target=read_bms_ble, daemon=True).start()
+  else:
+    print("BMS чтение включено через serial/rfcomm", flush=True)
+    threading.Thread(target=read_bms, kwargs={"port_name": BMS_PORT_OVERRIDE}, daemon=True).start()
 else:
   print("BMS чтение отключено (ENABLE_BMS=0)", flush=True)
 
