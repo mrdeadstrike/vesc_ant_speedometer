@@ -65,6 +65,8 @@ BMS_BLE_RESPONSE_TIMEOUT = float(os.environ.get("BMS_BLE_RESPONSE_TIMEOUT", "8")
 BMS_BLE_POLL_INTERVAL = float(os.environ.get("BMS_BLE_POLL_INTERVAL", "1"))
 BMS_BLE_RECONNECT_DELAY = float(os.environ.get("BMS_BLE_RECONNECT_DELAY", "2"))
 BMS_BLE_DEBUG_NOTIFY = int(os.environ.get("BMS_BLE_DEBUG_NOTIFY", "4"))
+BMS_BLE_DEBUG_SCAN = os.environ.get("BMS_BLE_DEBUG_SCAN", "1").strip().lower() not in {"0", "false", "off", "no"}
+BMS_BLE_DEBUG_BUFFER_BYTES = int(os.environ.get("BMS_BLE_DEBUG_BUFFER_BYTES", "80"))
 FARDRIVER_BLE_BACKEND = os.environ.get("FARDRIVER_BLE_BACKEND", "bleak").strip().lower()
 FARDRIVER_MASTER_MAC = os.environ.get("FARDRIVER_MASTER_MAC", "").strip()
 FARDRIVER_SLAVE_MAC = os.environ.get("FARDRIVER_SLAVE_MAC", "").strip()
@@ -2434,17 +2436,42 @@ def assemble_ant_bms_ble_frame(buffer: bytearray, chunk: bytes) -> bytes | None:
   return frame
 
 
-def bms_ble_device_matches(device) -> bool:
+def bms_ble_hex_preview(blob: bytes | bytearray, limit: int = BMS_BLE_DEBUG_BUFFER_BYTES) -> str:
+  raw = bytes(blob)
+  if len(raw) <= limit:
+    return raw.hex()
+  return f"{raw[:limit].hex()}...(+{len(raw) - limit} bytes)"
+
+
+def bms_ble_device_match_reason(device) -> tuple[bool, str]:
   wanted_mac = BMS_BLE_MAC.lower()
   address = (getattr(device, "address", "") or "").lower()
   name = (getattr(device, "name", "") or "")
-  if wanted_mac and address == wanted_mac:
-    return True
-  if BMS_BLE_NAME_PREFIX and name.startswith(BMS_BLE_NAME_PREFIX):
-    return True
+  name_lower = name.lower()
   metadata = getattr(device, "metadata", {}) or {}
   service_uuids = [str(u).lower() for u in metadata.get("uuids", [])]
-  return BMS_BLE_SERVICE_UUID.lower() in service_uuids and "yuanqufoc" not in name.lower()
+  has_service = BMS_BLE_SERVICE_UUID.lower() in service_uuids
+
+  if wanted_mac and address == wanted_mac:
+    return True, "MAC совпал с BMS_BLE_MAC"
+  if BMS_BLE_NAME_PREFIX and name.startswith(BMS_BLE_NAME_PREFIX):
+    return True, f"имя начинается с {BMS_BLE_NAME_PREFIX}"
+  if has_service and "yuanqufoc" not in name_lower and "fardriver" not in name_lower:
+    return True, f"рекламирует service {BMS_BLE_SERVICE_UUID}"
+  if wanted_mac:
+    return False, f"MAC не совпал: {address or '-'} != {wanted_mac}"
+  if name_lower.startswith("yuanqufoc") or "fardriver" in name_lower:
+    return False, "похоже на FarDriver, не BMS"
+  if BMS_BLE_NAME_PREFIX and name:
+    return False, f"имя не начинается с {BMS_BLE_NAME_PREFIX}"
+  if BMS_BLE_NAME_PREFIX and not name:
+    return False, f"нет имени и не видно service {BMS_BLE_SERVICE_UUID}"
+  return False, f"нет service {BMS_BLE_SERVICE_UUID}"
+
+
+def bms_ble_device_matches(device) -> bool:
+  matched, _ = bms_ble_device_match_reason(device)
+  return matched
 
 
 async def find_ant_bms_ble_device():
@@ -2455,17 +2482,28 @@ async def find_ant_bms_ble_device():
     devices = await BleakScanner.discover(timeout=BMS_BLE_SCAN_TIMEOUT)
 
   print(f"BMS BLE: найдено устройств: {len(devices)}", flush=True)
+  candidate_rows = []
   for device in devices:
     metadata = getattr(device, "metadata", {}) or {}
     uuids = ",".join(metadata.get("uuids", []) or [])
     rssi = getattr(device, "rssi", None)
+    matched, reason = bms_ble_device_match_reason(device)
+    if matched:
+      candidate_rows.append(device)
+    if BMS_BLE_DEBUG_SCAN or matched:
+      print(
+        f"BMS BLE: seen match={matched} reason={reason} "
+        f"name={getattr(device, 'name', None)} address={getattr(device, 'address', None)} rssi={rssi} uuids={uuids or '-'}",
+        flush=True
+      )
+
+  candidates = candidate_rows
+  if not candidates:
     print(
-      f"BMS BLE: seen name={getattr(device, 'name', None)} address={getattr(device, 'address', None)} rssi={rssi} uuids={uuids}",
+      "BMS BLE: кандидатов нет. Если BMS виден в bluetoothctl под другим именем, "
+      "запусти с BMS_BLE_NAME_PREFIX=<начало_имени> или BMS_BLE_MAC=<адрес>.",
       flush=True
     )
-
-  candidates = [device for device in devices if bms_ble_device_matches(device)]
-  if not candidates:
     return None
 
   candidates.sort(key=lambda d: getattr(d, "rssi", -999) if getattr(d, "rssi", None) is not None else -999, reverse=True)
@@ -2500,10 +2538,13 @@ async def read_bms_ble_async():
 
       frame = assemble_ant_bms_ble_frame(buffer, chunk_bytes)
       if not frame:
+        if notify_counter <= BMS_BLE_DEBUG_NOTIFY:
+          print(f"BMS BLE: frame пока не собран, buffer_len={len(buffer)} buffer={bms_ble_hex_preview(buffer)}", flush=True)
         return
 
+      print(f"BMS BLE: frame собран len={len(frame)} func=0x{frame[2]:02x} data_len={frame[5]}", flush=True)
       if frame[2] != 0x11:
-        print(f"BMS BLE: пропущен кадр func=0x{frame[2]:02x} len={len(frame)}", flush=True)
+        print(f"BMS BLE: пропущен кадр func=0x{frame[2]:02x} len={len(frame)} frame={bms_ble_hex_preview(frame)}", flush=True)
         return
 
       future = pending_status.get("future")
@@ -2536,6 +2577,7 @@ async def read_bms_ble_async():
         while client.is_connected:
           loop = asyncio.get_running_loop()
           pending_status["future"] = loop.create_future()
+          print(f"BMS BLE: send status command {ANT_BMS_BLE_STATUS_COMMAND.hex()}", flush=True)
           await client.write_gatt_char(write_char, ANT_BMS_BLE_STATUS_COMMAND, response=False)
           try:
             frame = await asyncio.wait_for(pending_status["future"], timeout=BMS_BLE_RESPONSE_TIMEOUT)
@@ -2547,7 +2589,21 @@ async def read_bms_ble_async():
             )
           except asyncio.TimeoutError:
             BMS_LOST = True
-            print("BMS BLE: timeout ответа на status", flush=True)
+            print(
+              f"BMS BLE: timeout ответа на status, connected={client.is_connected}, "
+              f"notify_count={notify_counter}, buffer_len={len(buffer)}, buffer={bms_ble_hex_preview(buffer)}",
+              flush=True
+            )
+            break
+          except Exception as exc:
+            BMS_LOST = True
+            print(
+              f"BMS BLE: ошибка разбора status: {type(exc).__name__}: {exc}; "
+              f"last_frame={bms_ble_hex_preview(frame) if 'frame' in locals() else '-'}",
+              flush=True
+            )
+            if os.environ.get("BMS_BLE_DEBUG_TRACEBACK", "1").strip().lower() not in {"0", "false", "off", "no"}:
+              traceback.print_exc()
             break
           await asyncio.sleep(BMS_BLE_POLL_INTERVAL)
       finally:
