@@ -55,7 +55,7 @@ PYGAME_FULLSCREEN = os.environ.get("PYGAME_FULLSCREEN", "0").strip().lower() in 
 ENABLE_BMS = os.environ.get("ENABLE_BMS", "1").strip().lower() not in {"0", "false", "off", "no"}
 BMS_BACKEND = os.environ.get("BMS_BACKEND", "bleak" if CONTROLLER_TYPE == "fardriver" else "serial").strip().lower()
 BMS_BLE_NAME_PREFIX = os.environ.get("BMS_BLE_NAME_PREFIX", "ANT-BLE").strip()
-BMS_BLE_MAC = os.environ.get("BMS_BLE_MAC", "").strip()
+BMS_BLE_MAC = os.environ.get("BMS_BLE_MAC", "98:DE:1E:84:80:E6").strip()
 BMS_BLE_SERVICE_UUID = os.environ.get("BMS_BLE_SERVICE_UUID", "0000ffe0-0000-1000-8000-00805f9b34fb")
 BMS_BLE_NOTIFY_UUID = os.environ.get("BMS_BLE_NOTIFY_UUID", "0000ffe1-0000-1000-8000-00805f9b34fb")
 BMS_BLE_WRITE_UUID = os.environ.get("BMS_BLE_WRITE_UUID", BMS_BLE_NOTIFY_UUID)
