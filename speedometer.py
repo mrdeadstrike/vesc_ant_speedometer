@@ -82,6 +82,7 @@ FARDRIVER_NOTIFY_UUID = os.environ.get("FARDRIVER_NOTIFY_UUID", "0000ffe1-0000-1
 FARDRIVER_WRITE_UUID = os.environ.get("FARDRIVER_WRITE_UUID", FARDRIVER_NOTIFY_UUID)
 FARDRIVER_NAME_PREFIX = os.environ.get("FARDRIVER_NAME_PREFIX", "YuanQuFOC")
 FARDRIVER_SPEED_CONTROLLER = os.environ.get("FARDRIVER_SPEED_CONTROLLER", "master").strip().lower()
+FARDRIVER_SPEED_SOURCE = os.environ.get("FARDRIVER_SPEED_SOURCE", "rpm").strip().lower()
 FARDRIVER_INIT_COMMANDS_HEX = os.environ.get(
   "FARDRIVER_INIT_COMMANDS_HEX",
   "aa13ec070000b04f,aa07f8000000a956"
@@ -266,6 +267,7 @@ except:
 
 data = {
   'speed': 0.0,
+  'speed_source_controller': 'master',
   'master': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0, 'temp_motor': 0, 'rpm': 0},
   'slave': {'motor_current': 0, 'battery_current': 0, 'duty': 0, 'temp': 0, 'temp_motor': 0, 'rpm': 0},
   'battery_voltage': 0,
@@ -929,7 +931,7 @@ def message_speaker():
 threading.Thread(target=message_speaker, daemon=True).start()
 
 # Параметры колеса
-wheel_diameter_m = 0.28  # 280 мм = 0.28 м 11 дюймов
+wheel_diameter_m = float(os.environ.get("WHEEL_DIAMETER_M", "0.28"))  # 280 мм = 0.28 м
 wheel_circumference_m = math.pi * wheel_diameter_m
 pole_pairs = 15
 
@@ -1659,9 +1661,10 @@ async def find_fardriver_candidates(mac, target_name, controller_key):
 class FarDriverTelemetry:
   def __init__(self, controller_key='master'):
     self.controller_key = controller_key
-    self.speed_source = os.environ.get("FARDRIVER_SPEED_SOURCE", "frame").strip().lower()
+    self.speed_source = FARDRIVER_SPEED_SOURCE
     self.speed_kmh = None
     self.frame_speed_kmh = None
+    self.rpm_speed_kmh = None
     self.wheel_speed_kmh = None
     self.battery_current = None
     self.phase_current = None
@@ -1710,6 +1713,7 @@ class FarDriverTelemetry:
       self.duty = max(0.0, min(100.0, payload[4] * 100.0 / 128.0))
       self.measure_speed = read_u16_le(payload, 6)
       self.rpm = float(self.measure_speed)
+      self.rpm_speed_kmh = max(0.0, self.rpm * wheel_circumference_m * 60.0 / 1000.0)
       self.recompute_wheel_speed()
     elif addr == 0xE8:
       self.voltage = read_i16_le(payload, 0) / 10.0
@@ -1743,15 +1747,20 @@ class FarDriverTelemetry:
     self.wheel_speed_kmh = max(0.0, float(self.measure_speed) * speed_factor / float(self.rate_ratio))
 
   def select_speed(self):
-    if self.speed_source == "wheel":
+    if self.speed_source == "rpm":
+      self.speed_kmh = self.rpm_speed_kmh if self.rpm_speed_kmh is not None else self.frame_speed_kmh
+    elif self.speed_source == "wheel":
       self.speed_kmh = self.wheel_speed_kmh if self.wheel_speed_kmh is not None else self.frame_speed_kmh
     else:
-      self.speed_kmh = self.frame_speed_kmh if self.frame_speed_kmh is not None else self.wheel_speed_kmh
+      self.speed_kmh = self.frame_speed_kmh if self.frame_speed_kmh is not None else (self.rpm_speed_kmh if self.rpm_speed_kmh is not None else self.wheel_speed_kmh)
 
   def flush_to_data(self):
     now = time.time()
     snapshot = {
       'speed_kmh': self.speed_kmh,
+      'rpm_speed_kmh': self.rpm_speed_kmh,
+      'frame_speed_kmh': self.frame_speed_kmh,
+      'wheel_speed_kmh': self.wheel_speed_kmh,
       'battery_current': self.battery_current,
       'phase_current': self.phase_current,
       'duty': self.duty,
@@ -1786,14 +1795,18 @@ class FarDriverTelemetry:
           data[key]['rpm'] = item['rpm']
 
       speed_source = None
+      speed_source_controller = None
       if fresh.get('master', {}).get('speed_kmh') is not None:
         speed_source = fresh['master']
+        speed_source_controller = 'master'
       elif fresh.get('slave', {}).get('speed_kmh') is not None:
         speed_source = fresh['slave']
+        speed_source_controller = 'slave'
       else:
         speed_source = {}
       if speed_source.get('speed_kmh') is not None:
         data['speed'] = speed_source['speed_kmh']
+        data['speed_source_controller'] = speed_source_controller or data.get('speed_source_controller', 'master')
 
       voltages = [item['voltage'] for item in fresh.values() if item.get('voltage') is not None]
       battery_currents = [item['battery_current'] for item in fresh.values() if item.get('battery_current') is not None]
@@ -3409,6 +3422,9 @@ while running:
     master_motor_current = int(abs(data['master']['motor_current']))
     master_battery_current = int(abs(data['master']['battery_current']))
     master_duty = int(abs(data['master']['duty']))
+    rpm_source_key = data.get('speed_source_controller', 'master')
+    rpm_source = data.get(rpm_source_key, data['master'])
+    rpm_display = int(abs(rpm_source.get('rpm', 0)))
 
     bar_lineup = [
       (slave_duty, 100, f"{slave_duty}", (0, 0, 0)),
@@ -3420,6 +3436,8 @@ while running:
     for (value, max_val, text, color), dx in zip(bar_lineup, bar_offsets):
       x = WIDTH * 0.5 + dx - stats_bar_width / 2
       draw_progress_bar(screen, x, stats_block_y, stats_bar_width, stats_bar_height, value, max_val, text, color)
+
+    draw_text_center(screen, f"{rpm_display} rpm", font_small, (0, 0, 0), stats_block_y + stats_bar_height / 2)
 
     # Временный overlay мощности/оборотов/фазного тока пока скрыт.
     # rpm_display = int(abs(data['master'].get('rpm', 0)))
