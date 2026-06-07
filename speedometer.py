@@ -83,6 +83,7 @@ FARDRIVER_WRITE_UUID = os.environ.get("FARDRIVER_WRITE_UUID", FARDRIVER_NOTIFY_U
 FARDRIVER_NAME_PREFIX = os.environ.get("FARDRIVER_NAME_PREFIX", "YuanQuFOC")
 FARDRIVER_SPEED_CONTROLLER = os.environ.get("FARDRIVER_SPEED_CONTROLLER", "master").strip().lower()
 FARDRIVER_SPEED_SOURCE = os.environ.get("FARDRIVER_SPEED_SOURCE", "rpm").strip().lower()
+FARDRIVER_RPM_DIVIDER = float(os.environ.get("FARDRIVER_RPM_DIVIDER", "4"))
 FARDRIVER_INIT_COMMANDS_HEX = os.environ.get(
   "FARDRIVER_INIT_COMMANDS_HEX",
   "aa13ec070000b04f,aa07f8000000a956"
@@ -1712,7 +1713,7 @@ class FarDriverTelemetry:
     if addr == 0xE2:
       self.duty = max(0.0, min(100.0, payload[4] * 100.0 / 128.0))
       self.measure_speed = read_u16_le(payload, 6)
-      self.rpm = float(self.measure_speed)
+      self.rpm = float(self.measure_speed) / FARDRIVER_RPM_DIVIDER if FARDRIVER_RPM_DIVIDER else float(self.measure_speed)
       self.rpm_speed_kmh = max(0.0, self.rpm * wheel_circumference_m * 60.0 / 1000.0)
       self.recompute_wheel_speed()
     elif addr == 0xE8:
