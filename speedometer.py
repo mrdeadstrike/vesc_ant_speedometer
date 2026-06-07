@@ -3438,7 +3438,7 @@ while running:
       x = WIDTH * 0.5 + dx - stats_bar_width / 2
       draw_progress_bar(screen, x, stats_block_y, stats_bar_width, stats_bar_height, value, max_val, text, color)
 
-    draw_text_center(screen, f"{rpm_display} rpm", font_small, (0, 0, 0), stats_block_y + stats_bar_height / 2)
+    draw_text_center(screen, f"{rpm_display}", font_small, (0, 0, 0), stats_block_y + stats_bar_height / 2)
 
     # Временный overlay мощности/оборотов/фазного тока пока скрыт.
     # rpm_display = int(abs(data['master'].get('rpm', 0)))
