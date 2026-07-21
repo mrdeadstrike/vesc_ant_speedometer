@@ -24,6 +24,7 @@ FARDRIVER_SCAN_STEP_SECONDS="${FARDRIVER_SCAN_STEP_SECONDS:-5}"
 FARDRIVER_PREFLIGHT_SCAN="${FARDRIVER_PREFLIGHT_SCAN:-0}"
 FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT:-/tmp/fardriver-master-ble}"
 FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT:-/tmp/fardriver-slave-ble}"
+SPEEDOMETER_LOG_TERMINAL="${SPEEDOMETER_LOG_TERMINAL:-1}"
 
 bridge_pid_controller=""
 bridge_pid_controller_slave=""
@@ -31,6 +32,23 @@ bridge_pid_bms=""
 
 exec > >(tee -a "${RUN_LOG}") 2>&1
 echo "===== run.sh $(date '+%Y-%m-%d %H:%M:%S') ====="
+
+start_log_terminal() {
+  if [[ "${SPEEDOMETER_LOG_TERMINAL}" == "0" || -z "${DISPLAY:-}" ]]; then
+    return
+  fi
+  if ! command -v lxterminal >/dev/null 2>&1; then
+    echo "lxterminal не найден, live-окно логов не запущено. Лог: ${RUN_LOG}"
+    return
+  fi
+
+  touch "${RUN_LOG}"
+  # tail exits when this launcher exits, so it will not leave an orphan window.
+  lxterminal --title="Speedometer logs" --command "tail --pid=${BASHPID} -n 200 -f '${RUN_LOG}'" &
+  echo "Открыто отдельное окно Speedometer logs"
+}
+
+start_log_terminal
 
 pause_on_error() {
   local code="$1"
