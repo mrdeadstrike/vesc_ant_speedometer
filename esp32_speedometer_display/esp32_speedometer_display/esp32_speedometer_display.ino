@@ -20,6 +20,7 @@ constexpr uint8_t DISPLAY_BRIGHTNESS = 7; // 0 (dim) ... 7 (bright)
 constexpr char BLUETOOTH_DEVICE_NAME[] = "SpeedDisplay";
 constexpr uint32_t SPEED_SIGNAL_TIMEOUT_MS = 2000;
 constexpr uint32_t LINK_ANIMATION_STEP_MS = 100;
+constexpr uint32_t CONTROLLER_ANIMATION_STEP_MS = 150;
 constexpr uint8_t FINISH_SPEED_KMH = 60;
 constexpr uint32_t MAX_ACCELERATION_MEASUREMENT_MS = 20000;
 constexpr uint32_t RESULT_BLINK_HALF_PERIOD_MS = 300;
@@ -133,6 +134,8 @@ uint32_t lastSpeedReceivedMs = 0;
 bool receivedSpeed = false;
 bool previousBtClientConnected = false;
 String btInputBuffer;
+bool frontControllerReady = false;
+bool rearControllerReady = false;
 
 uint32_t accelerationStartMs = 0;
 uint32_t completedAccelerationMs = 0;
@@ -153,6 +156,27 @@ bool tryParseSpeed(const String &text, uint16_t &outSpeed) {
   }
   const unsigned long parsed = text.toInt();
   outSpeed = parsed > 999 ? 999 : static_cast<uint16_t>(parsed);
+  return true;
+}
+
+bool tryParseLinkState(const String &text, bool &frontReady, bool &rearReady) {
+  const int separator = text.indexOf(' ');
+  if (separator <= 0) {
+    return false;
+  }
+  String frontToken = text.substring(0, separator);
+  String rearToken = text.substring(separator + 1);
+  frontToken.trim();
+  rearToken.trim();
+
+  uint16_t frontValue = 0;
+  uint16_t rearValue = 0;
+  if (!tryParseSpeed(frontToken, frontValue) || !tryParseSpeed(rearToken, rearValue) ||
+      frontValue > 1 || rearValue > 1) {
+    return false;
+  }
+  frontReady = frontValue == 1;
+  rearReady = rearValue == 1;
   return true;
 }
 
@@ -177,6 +201,15 @@ void processBluetoothCommand(const String &line) {
       receivedSpeed = true;
     } else {
       SerialBT.println("ERR BAD_SPEED");
+    }
+  } else if (verb == "LINK") {
+    bool parsedFrontReady = false;
+    bool parsedRearReady = false;
+    if (tryParseLinkState(payload, parsedFrontReady, parsedRearReady)) {
+      frontControllerReady = parsedFrontReady;
+      rearControllerReady = parsedRearReady;
+    } else {
+      SerialBT.println("ERR BAD_LINK");
     }
   } else if (verb == "PING") {
     SerialBT.println("PONG");
@@ -315,6 +348,18 @@ void showSpeed(uint16_t speedKmh) {
     // Two digits for 0...99 in the two central positions.
     segments[1] = display.digit(speedKmh / 10);
     segments[2] = display.digit(speedKmh % 10);
+  }
+
+  // While a FarDriver is still establishing telemetry, two adjacent segments
+  // run around the lower square of its outer digit. Left = front/slave,
+  // right = rear/master. Do not corrupt the hundreds digit at 100+ km/h.
+  static constexpr uint8_t LOWER_SQUARE_BITS[] = {0x40, 0x04, 0x08, 0x10};
+  const uint8_t phase = (millis() / CONTROLLER_ANIMATION_STEP_MS) % 4;
+  if (!frontControllerReady && speedKmh < 100) {
+    segments[0] |= LOWER_SQUARE_BITS[phase] | LOWER_SQUARE_BITS[(phase + 1) % 4];
+  }
+  if (!rearControllerReady) {
+    segments[3] |= LOWER_SQUARE_BITS[phase] | LOWER_SQUARE_BITS[(phase + 1) % 4];
   }
   display.showSegments(segments);
 }

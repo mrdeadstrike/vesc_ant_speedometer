@@ -329,6 +329,32 @@ FARDRIVER_LIVE_SCAN_CACHE = {
   'by_name': {},
 }
 
+def get_speed_display_controller_links():
+  """Return (front, rear) readiness for the external four-digit display.
+
+  The physical front controller is `slave`, rear is `master`. A BLE transport
+  connection alone is not enough: both temperature records must have arrived
+  and the last telemetry frame must still be recent.
+  """
+  if CONTROLLER_TYPE != "fardriver":
+    return True, True
+
+  now = time.time()
+  with FARDRIVER_LATEST_LOCK:
+    snapshots = {key: dict(value) for key, value in FARDRIVER_LATEST.items()}
+
+  def is_ready(controller_key):
+    snapshot = snapshots.get(controller_key, {})
+    updated_at = snapshot.get('updated_at')
+    return (
+      updated_at is not None and
+      now - updated_at <= 3 and
+      snapshot.get('mos_temp') is not None and
+      snapshot.get('motor_temp') is not None
+    )
+
+  return is_ready('slave'), is_ready('master')
+
 data_trip = {
   'max_speed': 0,
   'max_power': 0,
@@ -392,6 +418,7 @@ SPEED_DISPLAY_BT_NAME = os.environ.get("SPEED_DISPLAY_BT_NAME", "SpeedDisplay").
 SPEED_DISPLAY_BT_ADDRESS = os.environ.get("SPEED_DISPLAY_BT_ADDRESS", "").strip()
 SPEED_DISPLAY_BT_CHANNEL = int(os.environ.get("SPEED_DISPLAY_BT_CHANNEL", "1"))
 SPEED_DISPLAY_SEND_INTERVAL = float(os.environ.get("SPEED_DISPLAY_SEND_INTERVAL", "0.05"))
+SPEED_DISPLAY_CONTROLLER_STATUS_INTERVAL = float(os.environ.get("SPEED_DISPLAY_CONTROLLER_STATUS_INTERVAL", "0.2"))
 SPEED_DISPLAY_SCAN_SECONDS = int(float(os.environ.get("SPEED_DISPLAY_SCAN_SECONDS", "8")))
 SPEED_DISPLAY_RECONNECT_DELAY = float(os.environ.get("SPEED_DISPLAY_RECONNECT_DELAY", "3"))
 
@@ -755,8 +782,9 @@ class SpeedDisplayController:
 
   _device_pattern = re.compile(r"Device\s+([0-9A-Fa-f:]{17})\s+(.+)$")
 
-  def __init__(self, speed_provider, bt_name, bt_address, channel):
+  def __init__(self, speed_provider, controller_status_provider, bt_name, bt_address, channel):
     self._speed_provider = speed_provider
+    self._controller_status_provider = controller_status_provider
     self._bt_name = bt_name
     self._bt_address = bt_address
     self._channel = channel
@@ -865,6 +893,13 @@ class SpeedDisplayController:
       value = 0.0
     return max(0, min(999, int(round(value))))
 
+  def _read_controller_status(self):
+    try:
+      front_ready, rear_ready = self._controller_status_provider()
+    except Exception:
+      front_ready, rear_ready = False, False
+    return int(bool(front_ready)), int(bool(rear_ready))
+
   def _drain_responses(self):
     if not self._sock:
       return
@@ -877,11 +912,16 @@ class SpeedDisplayController:
 
   def _stream_loop(self):
     last_sent_at = 0.0
+    last_status_sent_at = 0.0
     while self._should_run and self._sock:
       now = time.monotonic()
       if now - last_sent_at >= SPEED_DISPLAY_SEND_INTERVAL:
         self._sock.sendall(f"SPEED {self._read_speed()}\n".encode("ascii"))
         last_sent_at = now
+      if now - last_status_sent_at >= SPEED_DISPLAY_CONTROLLER_STATUS_INTERVAL:
+        front_ready, rear_ready = self._read_controller_status()
+        self._sock.sendall(f"LINK {front_ready} {rear_ready}\n".encode("ascii"))
+        last_status_sent_at = now
       self._drain_responses()
       time.sleep(0.01)
 
@@ -920,6 +960,7 @@ mirror_controller = MirrorController(
 )
 speed_display_controller = SpeedDisplayController(
   speed_provider=lambda: data.get('speed', 0.0),
+  controller_status_provider=get_speed_display_controller_links,
   bt_name=SPEED_DISPLAY_BT_NAME,
   bt_address=SPEED_DISPLAY_BT_ADDRESS,
   channel=SPEED_DISPLAY_BT_CHANNEL,
