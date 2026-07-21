@@ -105,7 +105,7 @@ FARDRIVER_FINAL_CONNECT_CANDIDATES = int(os.environ.get("FARDRIVER_FINAL_CONNECT
 # scan is not a stable controller identifier. The exact advertised name is stable.
 FARDRIVER_BLUETOOTHCTL_SCAN = os.environ.get("FARDRIVER_BLUETOOTHCTL_SCAN", "1").strip().lower() not in {"0", "false", "off", "no"}
 FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS = int(float(os.environ.get("FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS", "8")))
-FARDRIVER_LIVE_SCAN_CACHE_SECONDS = float(os.environ.get("FARDRIVER_LIVE_SCAN_CACHE_SECONDS", "3"))
+FARDRIVER_LIVE_SCAN_CACHE_SECONDS = float(os.environ.get("FARDRIVER_LIVE_SCAN_CACHE_SECONDS", "0"))
 FARDRIVER_ALLOW_STALE_ADDRESS_FALLBACK = os.environ.get("FARDRIVER_ALLOW_STALE_ADDRESS_FALLBACK", "0").strip().lower() in {"1", "true", "on", "yes"}
 FARDRIVER_CACHE_FILE = os.environ.get("FARDRIVER_CACHE_FILE", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fardriver_ble_cache.json"))
 FARDRIVER_DEBUG_SCAN_ALL = os.environ.get("FARDRIVER_DEBUG_SCAN_ALL", "0").strip().lower() in {"1", "true", "on", "yes"}
@@ -322,6 +322,7 @@ FARDRIVER_LATEST = {
 }
 FARDRIVER_BLE_SCAN_LOCK = threading.Lock()
 FARDRIVER_BLE_CONNECT_LOCK = threading.Lock()
+FARDRIVER_BLE_CONTROLLER_SETUP_LOCK = threading.Lock()
 BMS_INITIAL_ATTEMPT_DONE = threading.Event()
 FARDRIVER_LIVE_SCAN_CACHE = {
   'updated_at': 0.0,
@@ -1783,7 +1784,12 @@ def bluetoothctl_fardriver_macs(target_name, controller_key):
     time.sleep(0.2)
     os.write(master_fd, b"scan on\n")
 
+    scan_started = time.monotonic()
     deadline = time.monotonic() + FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS
+    direct_target_pattern = re.compile(
+      rf"Device\s+[0-9A-Fa-f:]{{17}}\s+{re.escape(target_name)}(?:\s|$)"
+    )
+    live_ansi_pattern = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
     while True:
       remaining = deadline - time.monotonic()
       if remaining <= 0:
@@ -1798,6 +1804,14 @@ def bluetoothctl_fardriver_macs(target_name, controller_key):
       if not chunk:
         break
       scan_chunks.append(chunk.decode("utf-8", errors="replace"))
+      partial_text = live_ansi_pattern.sub("", "".join(scan_chunks)).replace("\r", "")
+      if direct_target_pattern.search(partial_text):
+        print(
+          f"FarDriver {controller_key}: fresh advertisement for {target_name} "
+          f"seen after {time.monotonic() - scan_started:.2f}s; stop scan",
+          flush=True
+        )
+        break
 
     os.write(master_fd, b"scan off\nquit\n")
     process.wait(timeout=3)
@@ -2282,7 +2296,12 @@ async def fardriver_ble_loop(mac, controller_key='master'):
         if telemetry.apply_frame(candidate):
           last_frame_at = time.time()
 
+    setup_lock_held = False
     try:
+      print(f"FarDriver {controller_key}: waiting for fresh-address setup slot", flush=True)
+      FARDRIVER_BLE_CONTROLLER_SETUP_LOCK.acquire()
+      setup_lock_held = True
+      print(f"FarDriver {controller_key}: fresh-address setup slot acquired", flush=True)
       candidates = await find_fardriver_candidates(mac, target_name, controller_key)
       fast_candidates = candidates[:max(1, FARDRIVER_FAST_CONNECT_CANDIDATES)]
       final_candidates = candidates[:max(1, FARDRIVER_FINAL_CONNECT_CANDIDATES)]
@@ -2367,6 +2386,10 @@ async def fardriver_ble_loop(mac, controller_key='master'):
       with FARDRIVER_BLE_CONNECT_LOCK:
         save_fardriver_cache_entry(controller_key, target_name, selected['address'], selected['name'], selected['source'])
 
+      FARDRIVER_BLE_CONTROLLER_SETUP_LOCK.release()
+      setup_lock_held = False
+      print(f"FarDriver {controller_key}: fresh-address setup slot released", flush=True)
+
       try:
         while True:
           try:
@@ -2386,7 +2409,12 @@ async def fardriver_ble_loop(mac, controller_key='master'):
       print(f"FarDriver {controller_key}: BLE reconnect reason: {format_exception(exc)}", flush=True)
       if FARDRIVER_DEBUG_TRACEBACK:
         traceback.print_exc()
-      await asyncio.sleep(FARDRIVER_RECONNECT_DELAY)
+    finally:
+      if setup_lock_held:
+        FARDRIVER_BLE_CONTROLLER_SETUP_LOCK.release()
+        print(f"FarDriver {controller_key}: fresh-address setup slot released after error", flush=True)
+        setup_lock_held = False
+    await asyncio.sleep(FARDRIVER_RECONNECT_DELAY)
 
 def read_fardriver_ble(mac, controller_key='master'):
   target_name = FARDRIVER_MASTER_NAME if controller_key == "master" else FARDRIVER_SLAVE_NAME
