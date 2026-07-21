@@ -95,6 +95,8 @@ FARDRIVER_DEBUG_NOTIFY = int(os.environ.get("FARDRIVER_DEBUG_NOTIFY", "8"))
 FARDRIVER_SCAN_TIMEOUT = float(os.environ.get("FARDRIVER_SCAN_TIMEOUT", "5"))
 FARDRIVER_CONNECT_TIMEOUT = float(os.environ.get("FARDRIVER_CONNECT_TIMEOUT", "6"))
 FARDRIVER_TRY_CONNECT_TIMEOUT = float(os.environ.get("FARDRIVER_TRY_CONNECT_TIMEOUT", "2"))
+FARDRIVER_SERVICE_DISCOVERY_TIMEOUT = float(os.environ.get("FARDRIVER_SERVICE_DISCOVERY_TIMEOUT", "6"))
+FARDRIVER_SERVICE_DISCOVERY_INTERVAL = float(os.environ.get("FARDRIVER_SERVICE_DISCOVERY_INTERVAL", "0.75"))
 FARDRIVER_FAST_CONNECT_CANDIDATES = int(os.environ.get("FARDRIVER_FAST_CONNECT_CANDIDATES", "6"))
 FARDRIVER_FINAL_CONNECT_TIMEOUT = float(os.environ.get("FARDRIVER_FINAL_CONNECT_TIMEOUT", str(FARDRIVER_CONNECT_TIMEOUT)))
 FARDRIVER_FINAL_CONNECT_CANDIDATES = int(os.environ.get("FARDRIVER_FINAL_CONNECT_CANDIDATES", "2"))
@@ -1601,6 +1603,49 @@ def choose_fardriver_characteristics(client, controller_key):
   print(f"FarDriver {controller_key}: selected notify={notify_char.uuid} write={write_char.uuid}", flush=True)
   return notify_char, write_char
 
+async def wait_for_fardriver_characteristics(client, controller_key):
+  deadline = time.monotonic() + max(0.0, FARDRIVER_SERVICE_DISCOVERY_TIMEOUT)
+  attempt = 0
+  last_error = None
+
+  while True:
+    attempt += 1
+
+    # Older Bleak exposes get_services() on the client, newer releases keep it
+    # on the backend. Re-query BlueZ because ServicesResolved can lag connect().
+    get_services = getattr(client, "get_services", None)
+    if not callable(get_services):
+      get_services = getattr(getattr(client, "_backend", None), "get_services", None)
+    if callable(get_services):
+      try:
+        await get_services()
+      except Exception as exc:
+        print(
+          f"FarDriver {controller_key}: GATT refresh attempt={attempt} failed: {format_exception(exc)}",
+          flush=True
+        )
+
+    try:
+      return choose_fardriver_characteristics(client, controller_key)
+    except SerialGetError as exc:
+      last_error = exc
+
+    remaining = deadline - time.monotonic()
+    if not client.is_connected or remaining <= 0:
+      break
+
+    delay = min(max(0.05, FARDRIVER_SERVICE_DISCOVERY_INTERVAL), remaining)
+    print(
+      f"FarDriver {controller_key}: GATT services not ready attempt={attempt}; "
+      f"retry_in={delay:.2f}s remaining={remaining:.2f}s",
+      flush=True
+    )
+    await asyncio.sleep(delay)
+
+  raise SerialGetError(
+    f"FarDriver BLE characteristics not found after {attempt} GATT attempts: {last_error}"
+  )
+
 def normalize_ble_mac(mac):
   return (mac or "").strip().upper()
 
@@ -2240,6 +2285,8 @@ async def fardriver_ble_loop(mac, controller_key='master'):
       ]
       client = None
       selected = None
+      notify_char = None
+      write_char = None
       attempt_errors = []
       for attempt_index, (attempt_kind, candidate_row, connect_timeout) in enumerate(attempts, 1):
         target = candidate_row['device'] if candidate_row['device'] is not None else candidate_row['address']
@@ -2252,15 +2299,35 @@ async def fardriver_ble_loop(mac, controller_key='master'):
         )
         candidate_client = BleakClient(target, timeout=connect_timeout)
         try:
-          # A string address makes Bleak perform an implicit discovery before
-          # connecting. Keep that discovery from colliding with BMS/slave scans.
+          # Keep the whole setup atomic at adapter level. On Raspberry Pi a
+          # concurrent scan/connect while BlueZ resolves GATT can leave only
+          # the generic system services visible and hide FarDriver's FFE1.
           with FARDRIVER_BLE_SCAN_LOCK:
             with FARDRIVER_BLE_CONNECT_LOCK:
               await candidate_client.connect()
+              print(
+                f"FarDriver {controller_key}: BLE link established address={candidate_row['address']}; "
+                "resolving GATT",
+                flush=True
+              )
+              candidate_notify, candidate_write = await wait_for_fardriver_characteristics(
+                candidate_client,
+                controller_key
+              )
+              await candidate_client.start_notify(candidate_notify, on_notify)
+              print(f"FarDriver {controller_key}: notify {candidate_notify.uuid}", flush=True)
+
+              for packet in init_packets:
+                print(f"FarDriver {controller_key}: init write {packet.hex()}", flush=True)
+                try:
+                  await candidate_client.write_gatt_char(candidate_write, packet, response=False)
+                except Exception:
+                  await candidate_client.write_gatt_char(candidate_write, packet, response=True)
+                await asyncio.sleep(0.2)
         except Exception as exc:
           attempt_errors.append(f"{candidate_row['address']}={format_exception(exc)}")
           print(
-            f"FarDriver {controller_key}: BLE connect failed attempt={attempt_index}/{len(attempts)} "
+            f"FarDriver {controller_key}: BLE setup failed attempt={attempt_index}/{len(attempts)} "
             f"address={candidate_row['address']} error={format_exception(exc)}",
             flush=True
           )
@@ -2273,14 +2340,16 @@ async def fardriver_ble_loop(mac, controller_key='master'):
           continue
         client = candidate_client
         selected = candidate_row
+        notify_char = candidate_notify
+        write_char = candidate_write
         print(
-          f"FarDriver {controller_key}: BLE connect success attempt={attempt_index}/{len(attempts)} "
+          f"FarDriver {controller_key}: BLE setup success attempt={attempt_index}/{len(attempts)} "
           f"address={selected['address']}",
           flush=True
         )
         break
 
-      if client is None or selected is None:
+      if client is None or selected is None or notify_char is None or write_char is None:
         raise SerialGetError(
           f"FarDriver BLE all candidates failed: {'; '.join(attempt_errors)}"
         )
@@ -2289,19 +2358,6 @@ async def fardriver_ble_loop(mac, controller_key='master'):
         save_fardriver_cache_entry(controller_key, target_name, selected['address'], selected['name'], selected['source'])
 
       try:
-        print(f"FarDriver {controller_key}: BLE connected", flush=True)
-        notify_char, write_char = choose_fardriver_characteristics(client, controller_key)
-        await client.start_notify(notify_char, on_notify)
-        print(f"FarDriver {controller_key}: notify {notify_char.uuid}", flush=True)
-
-        for packet in init_packets:
-          print(f"FarDriver {controller_key}: init write {packet.hex()}", flush=True)
-          try:
-            await client.write_gatt_char(write_char, packet, response=False)
-          except Exception:
-            await client.write_gatt_char(write_char, packet, response=True)
-          await asyncio.sleep(0.2)
-
         while True:
           try:
             await client.write_gatt_char(write_char, status_poll, response=False)
