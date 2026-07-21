@@ -18,7 +18,10 @@ FARDRIVER_SLAVE_NAME="${FARDRIVER_SLAVE_NAME:-YuanQuFOC690}"
 FARDRIVER_NAME_PREFIX="${FARDRIVER_NAME_PREFIX:-YuanQuFOC}"
 FARDRIVER_SCAN_SECONDS="${FARDRIVER_SCAN_SECONDS:-30}"
 FARDRIVER_SCAN_STEP_SECONDS="${FARDRIVER_SCAN_STEP_SECONDS:-5}"
-FARDRIVER_PREFLIGHT_SCAN="${FARDRIVER_PREFLIGHT_SCAN:-1}"
+# The controllers rotate their BLE addresses. Python connects to fresh Bleak scan
+# objects by exact advertisement name, so a separate bluetoothctl pre-scan only
+# delays startup and fills the process with stale addresses.
+FARDRIVER_PREFLIGHT_SCAN="${FARDRIVER_PREFLIGHT_SCAN:-0}"
 FARDRIVER_MASTER_PORT="${FARDRIVER_MASTER_PORT:-/tmp/fardriver-master-ble}"
 FARDRIVER_SLAVE_PORT="${FARDRIVER_SLAVE_PORT:-/tmp/fardriver-slave-ble}"
 
