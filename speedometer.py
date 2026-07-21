@@ -3,6 +3,7 @@ import asyncio
 import signal
 import socket
 import select
+import pty
 import subprocess
 import numpy as np
 import pygame
@@ -99,7 +100,8 @@ FARDRIVER_FINAL_CONNECT_CANDIDATES = int(os.environ.get("FARDRIVER_FINAL_CONNECT
 # FarDriver advertises a resolvable private address, so an address from a previous
 # scan is not a stable controller identifier. The exact advertised name is stable.
 FARDRIVER_BLUETOOTHCTL_SCAN = os.environ.get("FARDRIVER_BLUETOOTHCTL_SCAN", "1").strip().lower() not in {"0", "false", "off", "no"}
-FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS = int(float(os.environ.get("FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS", "5")))
+FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS = int(float(os.environ.get("FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS", "8")))
+FARDRIVER_LIVE_SCAN_CACHE_SECONDS = float(os.environ.get("FARDRIVER_LIVE_SCAN_CACHE_SECONDS", "3"))
 FARDRIVER_ALLOW_STALE_ADDRESS_FALLBACK = os.environ.get("FARDRIVER_ALLOW_STALE_ADDRESS_FALLBACK", "0").strip().lower() in {"1", "true", "on", "yes"}
 FARDRIVER_CACHE_FILE = os.environ.get("FARDRIVER_CACHE_FILE", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fardriver_ble_cache.json"))
 FARDRIVER_DEBUG_SCAN_ALL = os.environ.get("FARDRIVER_DEBUG_SCAN_ALL", "0").strip().lower() in {"1", "true", "on", "yes"}
@@ -316,6 +318,10 @@ FARDRIVER_LATEST = {
 }
 FARDRIVER_BLE_SCAN_LOCK = threading.Lock()
 FARDRIVER_BLE_CONNECT_LOCK = threading.Lock()
+FARDRIVER_LIVE_SCAN_CACHE = {
+  'updated_at': 0.0,
+  'by_name': {},
+}
 
 data_trip = {
   'max_speed': 0,
@@ -1686,55 +1692,80 @@ def bluetoothctl_fardriver_macs(target_name, controller_key):
   if not FARDRIVER_BLUETOOTHCTL_SCAN or not target_name:
     return []
 
+  now = time.time()
+  cached_by_name = FARDRIVER_LIVE_SCAN_CACHE['by_name']
+  cached_macs = cached_by_name.get(target_name, [])
+  if cached_macs and now - FARDRIVER_LIVE_SCAN_CACHE['updated_at'] <= FARDRIVER_LIVE_SCAN_CACHE_SECONDS:
+    print(
+      f"FarDriver {controller_key}: use current-session scan cache for {target_name}: {', '.join(cached_macs)}",
+      flush=True
+    )
+    return list(cached_macs)
+
   print(
-    f"FarDriver {controller_key}: bluetoothctl fresh scan name={target_name} timeout={FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS}s",
+    f"FarDriver {controller_key}: bluetoothctl live scan name={target_name} timeout={FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS}s",
     flush=True
   )
+  master_fd = None
+  slave_fd = None
+  process = None
   scan_chunks = []
   try:
-    subprocess.run(["bluetoothctl", "scan", "off"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
-  except Exception:
-    pass
+    # bluetoothctl emits [NEW]/[CHG] events only when it owns a terminal. A
+    # plain subprocess pipe receives no device lines on Raspberry Pi, while
+    # `bluetoothctl devices` is only BlueZ's long-lived stale-address cache.
+    master_fd, slave_fd = pty.openpty()
+    process = subprocess.Popen(
+      ["bluetoothctl"],
+      stdin=slave_fd,
+      stdout=slave_fd,
+      stderr=slave_fd,
+      close_fds=True,
+    )
+    os.close(slave_fd)
+    slave_fd = None
+    time.sleep(0.2)
+    os.write(master_fd, b"scan on\n")
 
-  try:
-    scan = subprocess.run(
-      ["bluetoothctl", "--timeout", str(FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS), "scan", "on"],
-      capture_output=True,
-      text=True,
-      timeout=FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS + 5,
-    )
-    print(
-      f"FarDriver {controller_key}: bluetoothctl scan rc={scan.returncode} stdout_lines={len((scan.stdout or '').splitlines())} stderr_lines={len((scan.stderr or '').splitlines())}",
-      flush=True
-    )
-    # Only this command output belongs to the current discovery session.
-    # `bluetoothctl devices` is a historical cache and contains obsolete RPAs.
-    scan_chunks.append(scan.stdout or "")
-    scan_chunks.append(scan.stderr or "")
+    deadline = time.monotonic() + FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS
+    while True:
+      remaining = deadline - time.monotonic()
+      if remaining <= 0:
+        break
+      readable, _, _ = select.select([master_fd], [], [], remaining)
+      if not readable:
+        continue
+      try:
+        chunk = os.read(master_fd, 4096)
+      except OSError:
+        break
+      if not chunk:
+        break
+      scan_chunks.append(chunk.decode("utf-8", errors="replace"))
+
+    os.write(master_fd, b"scan off\nquit\n")
+    process.wait(timeout=3)
   except Exception as exc:
-    print(f"FarDriver {controller_key}: bluetoothctl scan failed: {format_exception(exc)}", flush=True)
+    print(f"FarDriver {controller_key}: bluetoothctl live scan failed: {format_exception(exc)}", flush=True)
+  finally:
+    if process is not None and process.poll() is None:
+      try:
+        process.terminate()
+        process.wait(timeout=2)
+      except Exception:
+        pass
+    if slave_fd is not None:
+      try:
+        os.close(slave_fd)
+      except OSError:
+        pass
+    if master_fd is not None:
+      try:
+        os.close(master_fd)
+      except OSError:
+        pass
 
-  try:
-    devices = subprocess.run(
-      ["bluetoothctl", "devices"],
-      capture_output=True,
-      text=True,
-      timeout=5,
-    )
-    print(
-      f"FarDriver {controller_key}: bluetoothctl devices rc={devices.returncode} stdout_lines={len((devices.stdout or '').splitlines())} stderr_lines={len((devices.stderr or '').splitlines())}",
-      flush=True
-    )
-  except Exception as exc:
-    print(f"FarDriver {controller_key}: bluetoothctl devices failed: {format_exception(exc)}", flush=True)
-
-  try:
-    subprocess.run(["bluetoothctl", "scan", "off"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
-  except Exception:
-    pass
-
-  macs = []
-  seen = set()
+  by_name = {}
   matched_lines = []
   pattern = re.compile(r"Device\s+([0-9A-Fa-f:]{17})\s+([^\s]+)")
   for line in "\n".join(scan_chunks).splitlines():
@@ -1743,25 +1774,30 @@ def bluetoothctl_fardriver_macs(target_name, controller_key):
       continue
     addr = normalize_ble_mac(match.group(1))
     name = match.group(2)
-    if name != target_name:
+    if not name.startswith(FARDRIVER_NAME_PREFIX):
       continue
-    matched_lines.append(line.strip())
-    if addr in seen:
-      macs = [item for item in macs if item != addr]
-    seen.add(addr)
-    macs.append(addr)
+    addresses = by_name.setdefault(name, [])
+    if addr in addresses:
+      addresses.remove(addr)
+    addresses.append(addr)
+    if name == target_name:
+      matched_lines.append(line.strip())
+
+  FARDRIVER_LIVE_SCAN_CACHE['updated_at'] = time.time()
+  FARDRIVER_LIVE_SCAN_CACHE['by_name'] = by_name
+  macs = by_name.get(target_name, [])
 
   if matched_lines:
-    print(f"FarDriver {controller_key}: bluetoothctl matched lines for {target_name}:", flush=True)
+    print(f"FarDriver {controller_key}: bluetoothctl live matched lines for {target_name}:", flush=True)
     for index, line in enumerate(matched_lines[-20:], 1):
       print(f"  bt[{index}] {line}", flush=True)
   else:
-    print(f"FarDriver {controller_key}: bluetoothctl matched lines for {target_name}: none", flush=True)
+    print(f"FarDriver {controller_key}: bluetoothctl live matched lines for {target_name}: none", flush=True)
 
   if macs:
-    print(f"FarDriver {controller_key}: bluetoothctl candidates for {target_name}: {', '.join(macs)}", flush=True)
+    print(f"FarDriver {controller_key}: bluetoothctl live candidates for {target_name}: {', '.join(macs)}", flush=True)
   else:
-    print(f"FarDriver {controller_key}: bluetoothctl candidates for {target_name}: none", flush=True)
+    print(f"FarDriver {controller_key}: bluetoothctl live candidates for {target_name}: none", flush=True)
   return macs
 
 async def find_fardriver_candidates(mac, target_name, controller_key):
