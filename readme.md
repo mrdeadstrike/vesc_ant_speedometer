@@ -41,6 +41,12 @@ BLE_DEVICE_MAC=AA:BB:CC:DD:EE:FF ./start_ble_bridge.sh
 
 Важно: VESC-команды ограничения скорости для lock/eco в режиме FarDriver не отправляются. Для ограничения скорости FarDriver нужен отдельный write-протокол параметров, его лучше включать только после проверки на твоей модели контроллера.
 
+### Внешний ESP32-индикатор скорости
+- Прошейте `esp32_speedometer_display/esp32_speedometer_display/esp32_speedometer_display.ino` во вторую ESP32. Она объявится как Bluetooth Classic/SPP устройство `SpeedDisplay`.
+- При следующем запуске `speedometer.py` Raspberry Pi автоматически найдёт её по имени и будет отправлять текущую скорость FarDriver командой `SPEED <км/ч>` примерно 20 раз в секунду.
+- Если устройств с именем `SpeedDisplay` несколько, зафиксируйте нужное MAC перед запуском: `SPEED_DISPLAY_BT_ADDRESS=AA:BB:CC:DD:EE:FF ./run.sh`.
+- При первом подключении может понадобиться однократно выполнить в `bluetoothctl`: `pair <MAC>`, затем `trust <MAC>`.
+
 ### Подключение VESC по Bluetooth
 - Запускайте старый режим так: `CONTROLLER_TYPE=vesc VESC_SERIAL_PORT=/dev/rfcomm0 python3 speedometer.py`.
 - После привязки VESC через `bluetoothctl` убедитесь, что появилось устройство `/dev/rfcommX` (`ls /dev/rfcomm*`).

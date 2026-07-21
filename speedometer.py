@@ -2,6 +2,7 @@ import datetime
 import asyncio
 import signal
 import socket
+import select
 import subprocess
 import numpy as np
 import pygame
@@ -368,6 +369,16 @@ MIRROR_DEFAULT_RIGHT = 120
 MIRROR_FINE_STEP = 1
 MIRROR_COARSE_STEP = 5
 
+# Второй ESP32 с четырёхразрядным индикатором. По умолчанию адрес ищется
+# автоматически по имени Bluetooth Classic (SPP). Указывать MAC нужно только
+# если в зоне видны несколько плат с тем же именем.
+SPEED_DISPLAY_BT_NAME = os.environ.get("SPEED_DISPLAY_BT_NAME", "SpeedDisplay").strip()
+SPEED_DISPLAY_BT_ADDRESS = os.environ.get("SPEED_DISPLAY_BT_ADDRESS", "").strip()
+SPEED_DISPLAY_BT_CHANNEL = int(os.environ.get("SPEED_DISPLAY_BT_CHANNEL", "1"))
+SPEED_DISPLAY_SEND_INTERVAL = float(os.environ.get("SPEED_DISPLAY_SEND_INTERVAL", "0.05"))
+SPEED_DISPLAY_SCAN_SECONDS = int(float(os.environ.get("SPEED_DISPLAY_SCAN_SECONDS", "8")))
+SPEED_DISPLAY_RECONNECT_DELAY = float(os.environ.get("SPEED_DISPLAY_RECONNECT_DELAY", "3"))
+
 # Отдельно храним сохранённые позы (сложено/разложено) в отдельном файле состояния
 MIRROR_STATE_PATH = os.path.join(BASE_DIR, "mirror_state.json")
 _default_mirror_state = {
@@ -718,6 +729,171 @@ class MirrorController:
     self._sock = None
     self._rx_buffer = b""
 
+
+class SpeedDisplayController:
+  """Streams the already calculated dashboard speed to the small ESP32 display.
+
+  The protocol is deliberately tiny: an ESP32 named ``SpeedDisplay`` exposes
+  Bluetooth Classic SPP and receives newline-terminated ``SPEED <kmh>`` lines.
+  """
+
+  _device_pattern = re.compile(r"Device\s+([0-9A-Fa-f:]{17})\s+(.+)$")
+
+  def __init__(self, speed_provider, bt_name, bt_address, channel):
+    self._speed_provider = speed_provider
+    self._bt_name = bt_name
+    self._bt_address = bt_address
+    self._channel = channel
+    self._cached_address = bt_address or None
+    self._sock = None
+    self._connected = False
+    self._status = "Ожидание Bluetooth"
+    self._last_error = ""
+    self._lock = threading.Lock()
+    self._should_run = True
+    threading.Thread(target=self._worker_loop, daemon=True).start()
+
+  def get_snapshot(self):
+    with self._lock:
+      return {
+        "connected": self._connected,
+        "status": self._status,
+        "address": self._cached_address,
+        "last_error": self._last_error,
+      }
+
+  def _set_status(self, status, connected=False, error=""):
+    with self._lock:
+      self._connected = connected
+      self._status = status
+      self._last_error = error
+
+  @classmethod
+  def _addresses_from_bluetoothctl(cls, output, wanted_name):
+    addresses = []
+    for raw_line in output.splitlines():
+      match = cls._device_pattern.search(raw_line.strip())
+      if not match:
+        continue
+      address, name = match.groups()
+      if name.strip().casefold() == wanted_name.casefold():
+        addresses.append(address.upper())
+    return list(dict.fromkeys(addresses))
+
+  def _bluetoothctl(self, args, timeout):
+    try:
+      completed = subprocess.run(
+        ["bluetoothctl", *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=timeout,
+        check=False,
+      )
+      return completed.stdout or ""
+    except FileNotFoundError:
+      raise RuntimeError("bluetoothctl не найден: установи bluez")
+    except subprocess.TimeoutExpired as exc:
+      return (exc.stdout or "") if isinstance(exc.stdout, str) else ""
+
+  def _discover_address(self):
+    if self._bt_address:
+      return self._bt_address
+    if not self._bt_name:
+      raise RuntimeError("не задано имя SpeedDisplay")
+
+    known = self._bluetoothctl(["devices"], timeout=5)
+    candidates = self._addresses_from_bluetoothctl(known, self._bt_name)
+    if candidates:
+      return candidates[0]
+
+    self._set_status(f"Ищу {self._bt_name}…")
+    scan_output = ""
+    try:
+      scan_output = self._bluetoothctl(
+        ["--timeout", str(SPEED_DISPLAY_SCAN_SECONDS), "scan", "on"],
+        timeout=SPEED_DISPLAY_SCAN_SECONDS + 5,
+      )
+    finally:
+      try:
+        self._bluetoothctl(["scan", "off"], timeout=5)
+      except RuntimeError:
+        pass
+
+    candidates = self._addresses_from_bluetoothctl(scan_output, self._bt_name)
+    candidates.extend(self._addresses_from_bluetoothctl(
+      self._bluetoothctl(["devices"], timeout=5), self._bt_name
+    ))
+    candidates = list(dict.fromkeys(candidates))
+    if not candidates:
+      raise RuntimeError(f"{self._bt_name} не найден")
+    return candidates[0]
+
+  def _connect(self):
+    address = self._cached_address or self._discover_address()
+    self._cached_address = address
+    self._set_status(f"Подключение к {self._bt_name} ({address})…")
+
+    sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+    sock.settimeout(8.0)
+    sock.connect((address, self._channel))
+    sock.setblocking(False)
+    self._sock = sock
+    self._set_status("Подключено", connected=True)
+    print(f"SpeedDisplay: подключено к {address}", flush=True)
+
+  def _read_speed(self):
+    try:
+      value = float(self._speed_provider())
+    except (TypeError, ValueError):
+      value = 0.0
+    return max(0, min(999, int(round(value))))
+
+  def _drain_responses(self):
+    if not self._sock:
+      return
+    readable, _, _ = select.select([self._sock], [], [], 0)
+    if not readable:
+      return
+    response = self._sock.recv(128)
+    if not response:
+      raise ConnectionError("SpeedDisplay разорвал соединение")
+
+  def _stream_loop(self):
+    last_sent_at = 0.0
+    while self._should_run and self._sock:
+      now = time.monotonic()
+      if now - last_sent_at >= SPEED_DISPLAY_SEND_INTERVAL:
+        self._sock.sendall(f"SPEED {self._read_speed()}\n".encode("ascii"))
+        last_sent_at = now
+      self._drain_responses()
+      time.sleep(0.01)
+
+  def _close_socket(self):
+    if self._sock:
+      try:
+        self._sock.close()
+      except OSError:
+        pass
+    self._sock = None
+
+  def _worker_loop(self):
+    while self._should_run:
+      if not BLUETOOTH_SUPPORTED:
+        self._set_status("Bluetooth Classic недоступен")
+        time.sleep(10)
+        continue
+      try:
+        self._connect()
+        self._stream_loop()
+      except Exception as exc:
+        self._set_status(f"Ошибка: {exc}", error=str(exc))
+        print(f"SpeedDisplay: {exc}", flush=True)
+      finally:
+        self._close_socket()
+      time.sleep(SPEED_DISPLAY_RECONNECT_DELAY)
+
+
 mirror_controller = MirrorController(
   bt_address=MIRROR_BT_ADDRESS,
   channel=MIRROR_BT_CHANNEL,
@@ -725,6 +901,12 @@ mirror_controller = MirrorController(
   max_angle=MIRROR_MAX_ANGLE,
   default_left=MIRROR_DEFAULT_LEFT,
   default_right=MIRROR_DEFAULT_RIGHT
+)
+speed_display_controller = SpeedDisplayController(
+  speed_provider=lambda: data.get('speed', 0.0),
+  bt_name=SPEED_DISPLAY_BT_NAME,
+  bt_address=SPEED_DISPLAY_BT_ADDRESS,
+  channel=SPEED_DISPLAY_BT_CHANNEL,
 )
 mirror_fold_done = False
 
