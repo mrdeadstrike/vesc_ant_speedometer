@@ -67,6 +67,7 @@ BMS_BLE_RESPONSE_TIMEOUT = float(os.environ.get("BMS_BLE_RESPONSE_TIMEOUT", "8")
 BMS_BLE_POLL_INTERVAL = float(os.environ.get("BMS_BLE_POLL_INTERVAL", "1"))
 BMS_BLE_RECONNECT_DELAY = float(os.environ.get("BMS_BLE_RECONNECT_DELAY", "2"))
 BMS_BLE_DIRECT_CONNECT = os.environ.get("BMS_BLE_DIRECT_CONNECT", "1").strip().lower() not in {"0", "false", "off", "no"}
+BMS_BLE_ALLOW_SINGLE_ANONYMOUS = os.environ.get("BMS_BLE_ALLOW_SINGLE_ANONYMOUS", "1").strip().lower() not in {"0", "false", "off", "no"}
 BMS_BLE_PAIR = os.environ.get("BMS_BLE_PAIR", "0").strip().lower() in {"1", "true", "on", "yes"}
 BMS_BLE_DEBUG_NOTIFY = int(os.environ.get("BMS_BLE_DEBUG_NOTIFY", "4"))
 BMS_BLE_DEBUG_SCAN = os.environ.get("BMS_BLE_DEBUG_SCAN", "1").strip().lower() not in {"0", "false", "off", "no"}
@@ -1765,15 +1766,56 @@ def bluetoothctl_fardriver_macs(target_name, controller_key):
       except OSError:
         pass
 
-  by_name = {}
-  matched_lines = []
-  pattern = re.compile(r"Device\s+([0-9A-Fa-f:]{17})\s+([^\s]+)")
-  for line in "\n".join(scan_chunks).splitlines():
-    match = pattern.search(line)
+  ansi_pattern = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+  scan_text = ansi_pattern.sub("", "\n".join(scan_chunks)).replace("\r", "")
+  live_lines = [line.strip() for line in scan_text.splitlines() if "Device " in line]
+  touched_addresses = []
+  live_names = {}
+  event_pattern = re.compile(r"Device\s+([0-9A-Fa-f:]{17})(?:\s+([^\s]+))?")
+  for line in live_lines:
+    match = event_pattern.search(line)
     if not match:
       continue
     addr = normalize_ble_mac(match.group(1))
-    name = match.group(2)
+    if addr in touched_addresses:
+      touched_addresses.remove(addr)
+    touched_addresses.append(addr)
+    possible_name = match.group(2) or ""
+    if possible_name.startswith(FARDRIVER_NAME_PREFIX):
+      live_names[addr] = possible_name
+
+  known_names = {}
+  known_order = []
+  try:
+    known = subprocess.run(
+      ["bluetoothctl", "devices"],
+      capture_output=True,
+      text=True,
+      timeout=5,
+    )
+    known_pattern = re.compile(r"Device\s+([0-9A-Fa-f:]{17})\s+([^\s]+)")
+    for line in (known.stdout or "").splitlines():
+      match = known_pattern.search(line)
+      if not match:
+        continue
+      addr = normalize_ble_mac(match.group(1))
+      known_names[addr] = match.group(2)
+      known_order.append(addr)
+    print(
+      f"FarDriver {controller_key}: bluetoothctl live events={len(live_lines)} "
+      f"touched={len(touched_addresses)} known_devices={len(known_names)}",
+      flush=True
+    )
+  except Exception as exc:
+    print(f"FarDriver {controller_key}: bluetoothctl devices map failed: {format_exception(exc)}", flush=True)
+
+  for index, line in enumerate(live_lines[-30:], 1):
+    print(f"  live[{index}] {line}", flush=True)
+
+  by_name = {}
+  matched_lines = []
+  for addr in touched_addresses:
+    name = live_names.get(addr) or known_names.get(addr, "")
     if not name.startswith(FARDRIVER_NAME_PREFIX):
       continue
     addresses = by_name.setdefault(name, [])
@@ -1781,7 +1823,41 @@ def bluetoothctl_fardriver_macs(target_name, controller_key):
       addresses.remove(addr)
     addresses.append(addr)
     if name == target_name:
-      matched_lines.append(line.strip())
+      matched_lines.append(f"Device {addr} {name} (touched in current scan)")
+
+  # Some BlueZ builds suppress live device events even in a PTY. In that case
+  # consider only cached addresses that still expose live RSSI/connection state.
+  if not by_name.get(target_name):
+    scored = []
+    target_addresses = [addr for addr in known_order if known_names.get(addr) == target_name][-16:]
+    for addr in target_addresses:
+      try:
+        info = subprocess.run(
+          ["bluetoothctl", "info", addr],
+          capture_output=True,
+          text=True,
+          timeout=2,
+        )
+      except Exception as exc:
+        print(f"FarDriver {controller_key}: bluetoothctl info {addr} failed: {format_exception(exc)}", flush=True)
+        continue
+      info_text = info.stdout or ""
+      connected = bool(re.search(r"Connected:\s+yes", info_text, re.IGNORECASE))
+      resolved = bool(re.search(r"ServicesResolved:\s+yes", info_text, re.IGNORECASE))
+      rssi_match = re.search(r"RSSI:\s+(-?\d+)", info_text, re.IGNORECASE)
+      rssi = int(rssi_match.group(1)) if rssi_match else None
+      print(
+        f"FarDriver {controller_key}: cached-live-check {target_name} {addr} "
+        f"connected={connected} resolved={resolved} rssi={rssi if rssi is not None else '-'}",
+        flush=True
+      )
+      if connected or resolved or rssi is not None:
+        score = (10000 if connected else 0) + (1000 if resolved else 0) + (rssi if rssi is not None else -999)
+        scored.append((score, addr))
+    if scored:
+      scored.sort()
+      by_name[target_name] = [addr for _, addr in scored]
+      matched_lines.append("BlueZ cached address with live Connected/ServicesResolved/RSSI state")
 
   FARDRIVER_LIVE_SCAN_CACHE['updated_at'] = time.time()
   FARDRIVER_LIVE_SCAN_CACHE['by_name'] = by_name
@@ -1832,7 +1908,7 @@ async def find_fardriver_candidates(mac, target_name, controller_key):
     # Do not let master and slave issue scan on/off at the same time.
     with FARDRIVER_BLE_SCAN_LOCK:
       fresh_macs = bluetoothctl_fardriver_macs(target_name, controller_key)
-    for index, fresh_mac in enumerate(reversed(fresh_macs), 1):
+    for index, fresh_mac in enumerate(fresh_macs, 1):
       append_fardriver_candidate(candidates, seen, "bluetoothctl-live", mac=fresh_mac, name=target_name, priority=1200 + index)
 
   if not candidates:
@@ -2153,28 +2229,63 @@ async def fardriver_ble_loop(mac, controller_key='master'):
 
     try:
       candidates = await find_fardriver_candidates(mac, target_name, controller_key)
-      selected = candidates[0]
-      target = selected['device'] if selected['device'] is not None else selected['address']
-      print(
-        f"FarDriver {controller_key}: BLE connect selected {selected['address']} {selected['name'] or '-'} source={selected['source']} timeout={FARDRIVER_CONNECT_TIMEOUT}s",
-        flush=True
-      )
-      print(
-        f"FarDriver {controller_key}: BLE connect target_type={'BLEDevice' if selected['device'] is not None else 'address'} target={selected['address']}",
-        flush=True
-      )
-      with FARDRIVER_BLE_CONNECT_LOCK:
-        client = BleakClient(target, timeout=FARDRIVER_CONNECT_TIMEOUT)
+      fast_candidates = candidates[:max(1, FARDRIVER_FAST_CONNECT_CANDIDATES)]
+      final_candidates = candidates[:max(1, FARDRIVER_FINAL_CONNECT_CANDIDATES)]
+      attempts = [
+        ("fast", selected, FARDRIVER_TRY_CONNECT_TIMEOUT)
+        for selected in fast_candidates
+      ] + [
+        ("final", selected, FARDRIVER_FINAL_CONNECT_TIMEOUT)
+        for selected in final_candidates
+      ]
+      client = None
+      selected = None
+      attempt_errors = []
+      for attempt_index, (attempt_kind, candidate_row, connect_timeout) in enumerate(attempts, 1):
+        target = candidate_row['device'] if candidate_row['device'] is not None else candidate_row['address']
+        print(
+          f"FarDriver {controller_key}: BLE connect attempt {attempt_index}/{len(attempts)} "
+          f"kind={attempt_kind} address={candidate_row['address']} name={candidate_row['name'] or '-'} "
+          f"source={candidate_row['source']} timeout={connect_timeout}s "
+          f"target_type={'BLEDevice' if candidate_row['device'] is not None else 'address'}",
+          flush=True
+        )
+        candidate_client = BleakClient(target, timeout=connect_timeout)
         try:
-          await client.connect()
+          # A string address makes Bleak perform an implicit discovery before
+          # connecting. Keep that discovery from colliding with BMS/slave scans.
+          with FARDRIVER_BLE_SCAN_LOCK:
+            with FARDRIVER_BLE_CONNECT_LOCK:
+              await candidate_client.connect()
         except Exception as exc:
+          attempt_errors.append(f"{candidate_row['address']}={format_exception(exc)}")
           print(
-            f"FarDriver {controller_key}: BLE connect failed selected={selected['address']} source={selected['source']} error={format_exception(exc)}",
+            f"FarDriver {controller_key}: BLE connect failed attempt={attempt_index}/{len(attempts)} "
+            f"address={candidate_row['address']} error={format_exception(exc)}",
             flush=True
           )
           if FARDRIVER_DEBUG_TRACEBACK:
             traceback.print_exc()
-          raise
+          try:
+            await candidate_client.disconnect()
+          except Exception:
+            pass
+          continue
+        client = candidate_client
+        selected = candidate_row
+        print(
+          f"FarDriver {controller_key}: BLE connect success attempt={attempt_index}/{len(attempts)} "
+          f"address={selected['address']}",
+          flush=True
+        )
+        break
+
+      if client is None or selected is None:
+        raise SerialGetError(
+          f"FarDriver BLE all candidates failed: {'; '.join(attempt_errors)}"
+        )
+
+      with FARDRIVER_BLE_CONNECT_LOCK:
         save_fardriver_cache_entry(controller_key, target_name, selected['address'], selected['name'], selected['source'])
 
       try:
@@ -2740,7 +2851,9 @@ async def find_ant_bms_ble_device():
   from bleak import BleakScanner
 
   bms_log(f"BLE scan: start timeout={BMS_BLE_SCAN_TIMEOUT:.1f}s name_prefix={BMS_BLE_NAME_PREFIX or '-'} mac={BMS_BLE_MAC or '-'}")
-  with FARDRIVER_BLE_CONNECT_LOCK:
+  # FarDriver and BMS share one BlueZ discovery session. Scanning concurrently
+  # causes each device to receive incomplete or empty scan results.
+  with FARDRIVER_BLE_SCAN_LOCK:
     devices = await BleakScanner.discover(timeout=BMS_BLE_SCAN_TIMEOUT)
 
   bms_log(f"BLE scan: найдено устройств: {len(devices)}")
@@ -2759,6 +2872,18 @@ async def find_ant_bms_ble_device():
       )
 
   candidates = candidate_rows
+  if not candidates and BMS_BLE_ALLOW_SINGLE_ANONYMOUS:
+    anonymous = [
+      device for device in devices
+      if not (getattr(device, "name", "") or "").strip()
+    ]
+    if len(anonymous) == 1:
+      candidates = anonymous
+      bms_log(
+        "BLE scan: выбран единственный безымянный кандидат "
+        f"address={anonymous[0].address}; старый BMS_BLE_MAC не совпал, "
+        "проверим устройством ANT status"
+      )
   if not candidates:
     bms_log(
       "BLE scan: кандидатов нет. Если BMS виден в bluetoothctl под другим именем, "
