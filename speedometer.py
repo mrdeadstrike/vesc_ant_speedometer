@@ -72,7 +72,7 @@ BMS_BLE_PAIR = os.environ.get("BMS_BLE_PAIR", "0").strip().lower() in {"1", "tru
 BMS_BLE_DEBUG_NOTIFY = int(os.environ.get("BMS_BLE_DEBUG_NOTIFY", "4"))
 BMS_BLE_DEBUG_SCAN = os.environ.get("BMS_BLE_DEBUG_SCAN", "1").strip().lower() not in {"0", "false", "off", "no"}
 BMS_BLE_DEBUG_BUFFER_BYTES = int(os.environ.get("BMS_BLE_DEBUG_BUFFER_BYTES", "80"))
-BMS_BLE_FARDRIVER_SCAN_WAIT = float(os.environ.get("BMS_BLE_FARDRIVER_SCAN_WAIT", "12"))
+BMS_BLE_STARTUP_PRIORITY_TIMEOUT = float(os.environ.get("BMS_BLE_STARTUP_PRIORITY_TIMEOUT", "12"))
 BMS_LOG_KEYWORD = os.environ.get("BMS_LOG_KEYWORD", "[BMS]")
 FARDRIVER_BLE_BACKEND = os.environ.get("FARDRIVER_BLE_BACKEND", "bleak").strip().lower()
 FARDRIVER_MASTER_MAC = os.environ.get("FARDRIVER_MASTER_MAC", "").strip()
@@ -322,7 +322,7 @@ FARDRIVER_LATEST = {
 }
 FARDRIVER_BLE_SCAN_LOCK = threading.Lock()
 FARDRIVER_BLE_CONNECT_LOCK = threading.Lock()
-FARDRIVER_INITIAL_SCAN_DONE = threading.Event()
+BMS_INITIAL_ATTEMPT_DONE = threading.Event()
 FARDRIVER_LIVE_SCAN_CACHE = {
   'updated_at': 0.0,
   'by_name': {},
@@ -1961,11 +1961,8 @@ async def find_fardriver_candidates(mac, target_name, controller_key):
   if FARDRIVER_BLUETOOTHCTL_SCAN:
     # bluetoothctl uses the same adapter-wide discovery session as Bleak.
     # Do not let master and slave issue scan on/off at the same time.
-    try:
-      with FARDRIVER_BLE_SCAN_LOCK:
-        fresh_macs = bluetoothctl_fardriver_macs(target_name, controller_key)
-    finally:
-      FARDRIVER_INITIAL_SCAN_DONE.set()
+    with FARDRIVER_BLE_SCAN_LOCK:
+      fresh_macs = bluetoothctl_fardriver_macs(target_name, controller_key)
     for index, fresh_mac in enumerate(fresh_macs, 1):
       append_fardriver_candidate(candidates, seen, "bluetoothctl-live", mac=fresh_mac, name=target_name, priority=1200 + index)
 
@@ -2396,6 +2393,14 @@ def read_fardriver_ble(mac, controller_key='master'):
   if not mac and not target_name:
     print(f"FarDriver {controller_key}: MAC и имя не заданы", flush=True)
     return
+  if ENABLE_BMS and BMS_BACKEND in {"ble", "bleak", "bluetooth"} and BMS_BLE_STARTUP_PRIORITY_TIMEOUT > 0:
+    print(
+      f"FarDriver {controller_key}: ждём первый запуск BMS до "
+      f"{BMS_BLE_STARTUP_PRIORITY_TIMEOUT:.1f}s",
+      flush=True
+    )
+    bms_attempted = BMS_INITIAL_ATTEMPT_DONE.wait(timeout=BMS_BLE_STARTUP_PRIORITY_TIMEOUT)
+    print(f"FarDriver {controller_key}: BMS initial attempt finished={bms_attempted}", flush=True)
   if controller_key == "slave":
     time.sleep(float(os.environ.get("FARDRIVER_SLAVE_CONNECT_DELAY", "0")))
   asyncio.run(fardriver_ble_loop(mac, controller_key))
@@ -2922,8 +2927,15 @@ async def find_ant_bms_ble_device():
   bms_log(f"BLE scan: start timeout={BMS_BLE_SCAN_TIMEOUT:.1f}s name_prefix={BMS_BLE_NAME_PREFIX or '-'} mac={BMS_BLE_MAC or '-'}")
   # FarDriver and BMS share one BlueZ discovery session. Scanning concurrently
   # causes each device to receive incomplete or empty scan results.
-  with FARDRIVER_BLE_SCAN_LOCK:
-    devices = await BleakScanner.discover(timeout=BMS_BLE_SCAN_TIMEOUT)
+  try:
+    with FARDRIVER_BLE_SCAN_LOCK:
+      devices = await asyncio.wait_for(
+        BleakScanner.discover(timeout=BMS_BLE_SCAN_TIMEOUT),
+        timeout=BMS_BLE_SCAN_TIMEOUT + 3.0
+      )
+  except Exception as exc:
+    bms_log(f"BLE scan error: {format_exception(exc)}; повторим поиск")
+    return None
 
   bms_log(f"BLE scan: найдено устройств: {len(devices)}")
   candidate_rows = []
@@ -2975,6 +2987,7 @@ async def read_bms_ble_async():
   while True:
     target = await find_ant_bms_ble_device()
     if target is None:
+      BMS_INITIAL_ATTEMPT_DONE.set()
       BMS_LOST = True
       bms_log("BLE state: ANT-BLE устройство не найдено, повтор")
       await asyncio.sleep(BMS_BLE_RECONNECT_DELAY)
@@ -3012,6 +3025,7 @@ async def read_bms_ble_async():
         client = BleakClient(target, timeout=BMS_BLE_CONNECT_TIMEOUT)
         await client.connect()
       bms_log(f"BLE state: connect ok connected={client.is_connected}")
+      BMS_INITIAL_ATTEMPT_DONE.set()
 
       try:
         services = await client.get_services()
@@ -3070,6 +3084,7 @@ async def read_bms_ble_async():
         await client.disconnect()
         bms_log("BLE state: disconnected")
     except Exception as exc:
+      BMS_INITIAL_ATTEMPT_DONE.set()
       BMS_LOST = True
       bms_log(f"BLE error: {type(exc).__name__}: {exc}")
       if os.environ.get("BMS_BLE_DEBUG_TRACEBACK", "1").strip().lower() not in {"0", "false", "off", "no"}:
@@ -3080,13 +3095,6 @@ async def read_bms_ble_async():
 
 def read_bms_ble():
   try:
-    if CONTROLLER_TYPE == "fardriver" and FARDRIVER_BLE_BACKEND == "bleak" and BMS_BLE_FARDRIVER_SCAN_WAIT > 0:
-      bms_log(f"BLE startup: ждём первый FarDriver scan до {BMS_BLE_FARDRIVER_SCAN_WAIT:.1f}s")
-      scan_finished = FARDRIVER_INITIAL_SCAN_DONE.wait(timeout=BMS_BLE_FARDRIVER_SCAN_WAIT)
-      bms_log(f"BLE startup: FarDriver scan finished={scan_finished}")
-      # Let both controller loops consume the shared scan cache before BMS
-      # starts another adapter-wide discovery session.
-      time.sleep(0.5)
     asyncio.run(read_bms_ble_async())
   except Exception as exc:
     bms_log(f"BLE fatal: {type(exc).__name__}: {exc}")
