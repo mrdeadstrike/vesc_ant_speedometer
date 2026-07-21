@@ -98,8 +98,8 @@ FARDRIVER_FINAL_CONNECT_TIMEOUT = float(os.environ.get("FARDRIVER_FINAL_CONNECT_
 FARDRIVER_FINAL_CONNECT_CANDIDATES = int(os.environ.get("FARDRIVER_FINAL_CONNECT_CANDIDATES", "2"))
 # FarDriver advertises a resolvable private address, so an address from a previous
 # scan is not a stable controller identifier. The exact advertised name is stable.
-FARDRIVER_BLUETOOTHCTL_SCAN = os.environ.get("FARDRIVER_BLUETOOTHCTL_SCAN", "0").strip().lower() not in {"0", "false", "off", "no"}
-FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS = int(float(os.environ.get("FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS", "8")))
+FARDRIVER_BLUETOOTHCTL_SCAN = os.environ.get("FARDRIVER_BLUETOOTHCTL_SCAN", "1").strip().lower() not in {"0", "false", "off", "no"}
+FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS = int(float(os.environ.get("FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS", "5")))
 FARDRIVER_ALLOW_STALE_ADDRESS_FALLBACK = os.environ.get("FARDRIVER_ALLOW_STALE_ADDRESS_FALLBACK", "0").strip().lower() in {"1", "true", "on", "yes"}
 FARDRIVER_CACHE_FILE = os.environ.get("FARDRIVER_CACHE_FILE", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fardriver_ble_cache.json"))
 FARDRIVER_DEBUG_SCAN_ALL = os.environ.get("FARDRIVER_DEBUG_SCAN_ALL", "0").strip().lower() in {"1", "true", "on", "yes"}
@@ -1690,7 +1690,7 @@ def bluetoothctl_fardriver_macs(target_name, controller_key):
     f"FarDriver {controller_key}: bluetoothctl fresh scan name={target_name} timeout={FARDRIVER_BLUETOOTHCTL_SCAN_SECONDS}s",
     flush=True
   )
-  chunks = []
+  scan_chunks = []
   try:
     subprocess.run(["bluetoothctl", "scan", "off"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
   except Exception:
@@ -1707,8 +1707,10 @@ def bluetoothctl_fardriver_macs(target_name, controller_key):
       f"FarDriver {controller_key}: bluetoothctl scan rc={scan.returncode} stdout_lines={len((scan.stdout or '').splitlines())} stderr_lines={len((scan.stderr or '').splitlines())}",
       flush=True
     )
-    chunks.append(scan.stdout or "")
-    chunks.append(scan.stderr or "")
+    # Only this command output belongs to the current discovery session.
+    # `bluetoothctl devices` is a historical cache and contains obsolete RPAs.
+    scan_chunks.append(scan.stdout or "")
+    scan_chunks.append(scan.stderr or "")
   except Exception as exc:
     print(f"FarDriver {controller_key}: bluetoothctl scan failed: {format_exception(exc)}", flush=True)
 
@@ -1723,8 +1725,6 @@ def bluetoothctl_fardriver_macs(target_name, controller_key):
       f"FarDriver {controller_key}: bluetoothctl devices rc={devices.returncode} stdout_lines={len((devices.stdout or '').splitlines())} stderr_lines={len((devices.stderr or '').splitlines())}",
       flush=True
     )
-    chunks.append(devices.stdout or "")
-    chunks.append(devices.stderr or "")
   except Exception as exc:
     print(f"FarDriver {controller_key}: bluetoothctl devices failed: {format_exception(exc)}", flush=True)
 
@@ -1737,7 +1737,7 @@ def bluetoothctl_fardriver_macs(target_name, controller_key):
   seen = set()
   matched_lines = []
   pattern = re.compile(r"Device\s+([0-9A-Fa-f:]{17})\s+([^\s]+)")
-  for line in "\n".join(chunks).splitlines():
+  for line in "\n".join(scan_chunks).splitlines():
     match = pattern.search(line)
     if not match:
       continue
@@ -1767,15 +1767,6 @@ def bluetoothctl_fardriver_macs(target_name, controller_key):
 async def find_fardriver_candidates(mac, target_name, controller_key):
   from bleak import BleakScanner
 
-  print(
-    f"FarDriver {controller_key}: fresh BLE scan name={target_name} timeout={FARDRIVER_SCAN_TIMEOUT}s",
-    flush=True
-  )
-  # BlueZ accepts only one discovery session at a time. Keep this lock limited
-  # to the scan itself: the other controller can scan while the first connects.
-  with FARDRIVER_BLE_SCAN_LOCK:
-    devices = await BleakScanner.discover(timeout=FARDRIVER_SCAN_TIMEOUT)
-  print_bleak_devices(controller_key, devices, target_name)
   candidates = []
   seen = set()
   configured_macs = split_ble_macs(FARDRIVER_MASTER_MACS if controller_key == "master" else FARDRIVER_SLAVE_MACS)
@@ -1787,7 +1778,6 @@ async def find_fardriver_candidates(mac, target_name, controller_key):
     flush=True
   )
 
-  scanned_by_mac = {normalize_ble_mac(item.address): item for item in devices if normalize_ble_mac(item.address)}
   cache = load_fardriver_cache()
   cached = cache.get(controller_key, {})
   cached_mac = normalize_ble_mac(cached.get("address") if isinstance(cached, dict) else "")
@@ -1800,35 +1790,43 @@ async def find_fardriver_candidates(mac, target_name, controller_key):
     print(
       f"FarDriver {controller_key}: configured/cache addresses are ignored because FarDriver rotates BLE addresses",
       flush=True
-    )
-  for item in devices:
-    item_name = item.name or ""
-    item_addr = normalize_ble_mac(item.address)
-    if not item_addr:
-      continue
-    if target_name and item_name == target_name:
-      # Pass the fresh BLEDevice to BleakClient. Passing an old address triggers
-      # another lookup and is unreliable when the controller rotates its address.
-      append_fardriver_candidate(candidates, seen, "fresh-exact-name", device=item, priority=1000)
-    elif target_name and item_name.startswith(target_name):
-      append_fardriver_candidate(candidates, seen, "fresh-name-prefix", device=item, priority=900)
-    elif (not target_name) and item_name.startswith(FARDRIVER_NAME_PREFIX):
-      append_fardriver_candidate(candidates, seen, "fresh-prefix", device=item, priority=800)
-
-  if not candidates and FARDRIVER_BLUETOOTHCTL_SCAN:
-    fresh_macs = bluetoothctl_fardriver_macs(target_name, controller_key)
+  )
+  if FARDRIVER_BLUETOOTHCTL_SCAN:
+    # bluetoothctl uses the same adapter-wide discovery session as Bleak.
+    # Do not let master and slave issue scan on/off at the same time.
+    with FARDRIVER_BLE_SCAN_LOCK:
+      fresh_macs = bluetoothctl_fardriver_macs(target_name, controller_key)
     for index, fresh_mac in enumerate(reversed(fresh_macs), 1):
-      scanned = scanned_by_mac.get(fresh_mac)
-      if scanned is not None:
-        append_fardriver_candidate(candidates, seen, "bluetoothctl+scan", device=scanned, priority=700 + index)
-      else:
-        append_fardriver_candidate(candidates, seen, "bluetoothctl", mac=fresh_mac, name=target_name, priority=600 + index)
+      append_fardriver_candidate(candidates, seen, "bluetoothctl-live", mac=fresh_mac, name=target_name, priority=1200 + index)
+
+  if not candidates:
+    print(
+      f"FarDriver {controller_key}: fresh Bleak scan fallback name={target_name} timeout={FARDRIVER_SCAN_TIMEOUT}s",
+      flush=True
+    )
+    # BlueZ accepts only one discovery session at a time. Keep this lock limited
+    # to the scan itself: the other controller can scan while the first connects.
+    with FARDRIVER_BLE_SCAN_LOCK:
+      devices = await BleakScanner.discover(timeout=FARDRIVER_SCAN_TIMEOUT)
+    print_bleak_devices(controller_key, devices, target_name)
+    for item in devices:
+      item_name = item.name or ""
+      item_addr = normalize_ble_mac(item.address)
+      if not item_addr:
+        continue
+      if target_name and item_name == target_name:
+        append_fardriver_candidate(candidates, seen, "bleak-fresh-exact-name", device=item, priority=1000)
+      elif target_name and item_name.startswith(target_name):
+        append_fardriver_candidate(candidates, seen, "bleak-fresh-name-prefix", device=item, priority=900)
+      elif (not target_name) and item_name.startswith(FARDRIVER_NAME_PREFIX):
+        append_fardriver_candidate(candidates, seen, "bleak-fresh-prefix", device=item, priority=800)
 
   if not candidates and FARDRIVER_ALLOW_STALE_ADDRESS_FALLBACK:
     print(
       f"FarDriver {controller_key}: fresh name was not seen; stale-address fallback is enabled",
       flush=True
     )
+    scanned_by_mac = {normalize_ble_mac(item.address): item for item in devices if normalize_ble_mac(item.address)}
     if cached_mac and (not target_name or cached_target_name == target_name):
       scanned = scanned_by_mac.get(cached_mac)
       if scanned is not None:
