@@ -72,6 +72,7 @@ BMS_BLE_PAIR = os.environ.get("BMS_BLE_PAIR", "0").strip().lower() in {"1", "tru
 BMS_BLE_DEBUG_NOTIFY = int(os.environ.get("BMS_BLE_DEBUG_NOTIFY", "4"))
 BMS_BLE_DEBUG_SCAN = os.environ.get("BMS_BLE_DEBUG_SCAN", "1").strip().lower() not in {"0", "false", "off", "no"}
 BMS_BLE_DEBUG_BUFFER_BYTES = int(os.environ.get("BMS_BLE_DEBUG_BUFFER_BYTES", "80"))
+BMS_BLE_FARDRIVER_SCAN_WAIT = float(os.environ.get("BMS_BLE_FARDRIVER_SCAN_WAIT", "12"))
 BMS_LOG_KEYWORD = os.environ.get("BMS_LOG_KEYWORD", "[BMS]")
 FARDRIVER_BLE_BACKEND = os.environ.get("FARDRIVER_BLE_BACKEND", "bleak").strip().lower()
 FARDRIVER_MASTER_MAC = os.environ.get("FARDRIVER_MASTER_MAC", "").strip()
@@ -321,6 +322,7 @@ FARDRIVER_LATEST = {
 }
 FARDRIVER_BLE_SCAN_LOCK = threading.Lock()
 FARDRIVER_BLE_CONNECT_LOCK = threading.Lock()
+FARDRIVER_INITIAL_SCAN_DONE = threading.Event()
 FARDRIVER_LIVE_SCAN_CACHE = {
   'updated_at': 0.0,
   'by_name': {},
@@ -1560,12 +1562,16 @@ def fardriver_init_packets():
 
 def choose_fardriver_characteristics(client, controller_key):
   known_notify = {
+    FARDRIVER_NOTIFY_UUID.lower(),
     "0000ffe1-0000-1000-8000-00805f9b34fb",
+    "0000ffec-0000-1000-8000-00805f9b34fb",
     "0000fff1-0000-1000-8000-00805f9b34fb",
     "0000fff4-0000-1000-8000-00805f9b34fb",
   }
   known_write = {
+    FARDRIVER_WRITE_UUID.lower(),
     "0000ffe1-0000-1000-8000-00805f9b34fb",
+    "0000ffec-0000-1000-8000-00805f9b34fb",
     "0000fff1-0000-1000-8000-00805f9b34fb",
     "0000fff2-0000-1000-8000-00805f9b34fb",
     "0000fff3-0000-1000-8000-00805f9b34fb",
@@ -1577,6 +1583,8 @@ def choose_fardriver_characteristics(client, controller_key):
   fallback_write = None
 
   for service in client.services:
+    service_uuid = service.uuid.lower()
+    vendor_service = service_uuid == FARDRIVER_SERVICE_UUID.lower() or service_uuid.startswith("0000ff")
     print(f"FarDriver {controller_key}: service {service.uuid}", flush=True)
     for char in service.characteristics:
       props = set(char.properties or [])
@@ -1584,11 +1592,13 @@ def choose_fardriver_characteristics(client, controller_key):
       print(f"FarDriver {controller_key}: char {char.uuid} props={','.join(sorted(props))}", flush=True)
 
       if "notify" in props or "indicate" in props:
-        fallback_notify = fallback_notify or char
+        if vendor_service or uuid_lower.startswith("0000ff"):
+          fallback_notify = fallback_notify or char
         if uuid_lower in known_notify:
           notify_char = char
       if "write" in props or "write-without-response" in props:
-        fallback_write = fallback_write or char
+        if vendor_service or uuid_lower.startswith("0000ff"):
+          fallback_write = fallback_write or char
         if uuid_lower in known_write:
           write_char = char
 
@@ -1951,8 +1961,11 @@ async def find_fardriver_candidates(mac, target_name, controller_key):
   if FARDRIVER_BLUETOOTHCTL_SCAN:
     # bluetoothctl uses the same adapter-wide discovery session as Bleak.
     # Do not let master and slave issue scan on/off at the same time.
-    with FARDRIVER_BLE_SCAN_LOCK:
-      fresh_macs = bluetoothctl_fardriver_macs(target_name, controller_key)
+    try:
+      with FARDRIVER_BLE_SCAN_LOCK:
+        fresh_macs = bluetoothctl_fardriver_macs(target_name, controller_key)
+    finally:
+      FARDRIVER_INITIAL_SCAN_DONE.set()
     for index, fresh_mac in enumerate(fresh_macs, 1):
       append_fardriver_candidate(candidates, seen, "bluetoothctl-live", mac=fresh_mac, name=target_name, priority=1200 + index)
 
@@ -3067,6 +3080,13 @@ async def read_bms_ble_async():
 
 def read_bms_ble():
   try:
+    if CONTROLLER_TYPE == "fardriver" and FARDRIVER_BLE_BACKEND == "bleak" and BMS_BLE_FARDRIVER_SCAN_WAIT > 0:
+      bms_log(f"BLE startup: ждём первый FarDriver scan до {BMS_BLE_FARDRIVER_SCAN_WAIT:.1f}s")
+      scan_finished = FARDRIVER_INITIAL_SCAN_DONE.wait(timeout=BMS_BLE_FARDRIVER_SCAN_WAIT)
+      bms_log(f"BLE startup: FarDriver scan finished={scan_finished}")
+      # Let both controller loops consume the shared scan cache before BMS
+      # starts another adapter-wide discovery session.
+      time.sleep(0.5)
     asyncio.run(read_bms_ble_async())
   except Exception as exc:
     bms_log(f"BLE fatal: {type(exc).__name__}: {exc}")
