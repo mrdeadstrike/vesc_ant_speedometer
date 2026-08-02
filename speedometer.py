@@ -827,6 +827,9 @@ class MirrorController:
     self._rx_buffer = b""
 
 
+speed_display_shutdown_requested = threading.Event()
+
+
 class SpeedDisplayController:
   """Streams dashboard speed, controller state and BMS telemetry to ESP32.
 
@@ -844,6 +847,7 @@ class SpeedDisplayController:
     self._channel = channel
     self._cached_address = bt_address or None
     self._sock = None
+    self._rx_buffer = b""
     self._connected = False
     self._status = "Ожидание Bluetooth"
     self._last_error = ""
@@ -965,6 +969,13 @@ class SpeedDisplayController:
     response = self._sock.recv(128)
     if not response:
       raise ConnectionError("SpeedDisplay разорвал соединение")
+    self._rx_buffer += response
+    while b"\n" in self._rx_buffer:
+      raw_line, self._rx_buffer = self._rx_buffer.split(b"\n", 1)
+      line = raw_line.decode("ascii", errors="ignore").strip().upper()
+      if line == "SHUTDOWN":
+        print("SpeedDisplay: получена команда выключения от тумблера", flush=True)
+        speed_display_shutdown_requested.set()
 
   def _stream_loop(self):
     last_sent_at = 0.0
@@ -989,6 +1000,7 @@ class SpeedDisplayController:
       except OSError:
         pass
     self._sock = None
+    self._rx_buffer = b""
 
   def _worker_loop(self):
     while self._should_run:
@@ -3885,6 +3897,13 @@ while running:
         ch = event.unicode
         if ch.isdigit():
           handle_lock_digit(ch)
+
+  if speed_display_shutdown_requested.is_set():
+    speed_display_shutdown_requested.clear()
+    full_off = True
+    perform_exit("ESP32 power switch open-to-closed transition")
+    break
+
   if PAGE_NAME == PAGE_LOCK:
     draw_lock_page()
     pygame.display.flip()

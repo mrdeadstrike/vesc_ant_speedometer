@@ -14,6 +14,9 @@ constexpr uint8_t CELL_CLK_PIN = 26;
 constexpr uint8_t CELL_DIO_PIN = 25;
 constexpr uint8_t TEMP_CLK_PIN = 32;
 constexpr uint8_t TEMP_DIO_PIN = 33;
+// Connect the toggle switch between GPIO23 and GND. GPIO23 supports the
+// internal pull-up; GPIO34/35 do not.
+constexpr uint8_t POWER_SWITCH_PIN = 23;
 
 constexpr uint8_t DISPLAY_BRIGHTNESS = 7;
 constexpr char BLUETOOTH_DEVICE_NAME[] = "SpeedDisplay";
@@ -21,8 +24,9 @@ constexpr uint32_t SPEED_SIGNAL_TIMEOUT_MS = 2000;
 constexpr uint32_t TELEMETRY_SIGNAL_TIMEOUT_MS = 2000;
 constexpr uint32_t LINK_ANIMATION_STEP_MS = 100;
 constexpr uint32_t STATUS_ANIMATION_STEP_MS = 150;
-constexpr uint32_t TEMP_PAGE_DURATION_MS = 2000;
+constexpr uint32_t TEMP_PAGE_DURATION_MS = 3000;
 constexpr uint32_t TEMP_ALERT_BLINK_HALF_PERIOD_MS = 500;
+constexpr uint16_t CELL_ALERT_MILLIVOLTS = 3500;
 constexpr int16_t BATTERY_ALERT_TEMP_C = 45;
 constexpr int16_t CONTROLLER_ALERT_TEMP_C = 55;
 constexpr int16_t MOTOR_ALERT_TEMP_C = 60;
@@ -30,6 +34,7 @@ constexpr uint8_t FINISH_SPEED_KMH = 60;
 constexpr uint32_t MAX_ACCELERATION_MEASUREMENT_MS = 20000;
 constexpr uint32_t RESULT_BLINK_HALF_PERIOD_MS = 300;
 constexpr uint8_t RESULT_BLINK_COUNT = 5;
+constexpr uint32_t POWER_SWITCH_DEBOUNCE_MS = 80;
 
 // On this clock-style 5643BW module, bit 7 of address #1 controls the colon.
 constexpr uint8_t COLON_DIGIT_INDEX = 1;
@@ -152,6 +157,10 @@ bool receivedTelemetry = false;
 bool allSourcesPreviouslyReady = false;
 uint32_t allSourcesReadySinceMs = 0;
 
+bool powerSwitchStableClosed = false;
+bool powerSwitchCandidateClosed = false;
+uint32_t powerSwitchCandidateSinceMs = 0;
+
 uint32_t accelerationStartMs = 0;
 uint32_t completedAccelerationMs = 0;
 uint32_t resultStartMs = 0;
@@ -269,6 +278,33 @@ void pollBluetooth() {
       btInputBuffer = "";
     } else if (btInputBuffer.length() < 100) {
       btInputBuffer += ch;
+    }
+  }
+}
+
+void pollPowerSwitch() {
+  const bool rawClosed = digitalRead(POWER_SWITCH_PIN) == LOW;
+  const uint32_t now = millis();
+
+  if (rawClosed != powerSwitchCandidateClosed) {
+    powerSwitchCandidateClosed = rawClosed;
+    powerSwitchCandidateSinceMs = now;
+    return;
+  }
+
+  if (rawClosed == powerSwitchStableClosed ||
+      now - powerSwitchCandidateSinceMs < POWER_SWITCH_DEBOUNCE_MS) {
+    return;
+  }
+
+  const bool wasClosed = powerSwitchStableClosed;
+  powerSwitchStableClosed = rawClosed;
+  if (!wasClosed && powerSwitchStableClosed) {
+    if (SerialBT.hasClient()) {
+      SerialBT.println("SHUTDOWN");
+      Serial.println("Power switch open->closed: SHUTDOWN sent");
+    } else {
+      Serial.println("Power switch open->closed: no Bluetooth client, ignored");
     }
   }
 }
@@ -423,6 +459,13 @@ void showAccelerationResult() {
 void showCellVoltage() {
   // 3450 mV becomes 3:45. This clock module has a colon, not an individually
   // controllable decimal point, so the colon represents the decimal separator.
+  if (minimumCellMillivolts < CELL_ALERT_MILLIVOLTS &&
+      (millis() / TEMP_ALERT_BLINK_HALF_PERIOD_MS) % 2 == 1) {
+    const uint8_t blank[4] = {0x00, 0x00, 0x00, 0x00};
+    cellDisplay.showSegments(blank);
+    return;
+  }
+
   const uint16_t roundedHundredths = (minimumCellMillivolts + 5) / 10;
   const uint16_t hundredths = roundedHundredths > 999 ? 999 : roundedHundredths;
   uint8_t segments[4] = {
@@ -461,8 +504,9 @@ void showTemperatureValue(uint8_t page, int16_t rawValue) {
     segments[2] = tempDisplay.digit(value / 10);
     segments[3] = tempDisplay.digit(value % 10);
   } else {
-    segments[1] = tempDisplay.digit(value / 10);
-    segments[2] = tempDisplay.digit(value % 10);
+    // Motor/wheel temperature uses the two rightmost digits.
+    segments[2] = tempDisplay.digit(value / 10);
+    segments[3] = tempDisplay.digit(value % 10);
   }
   tempDisplay.showSegments(segments);
 }
@@ -492,6 +536,10 @@ void showTemperaturePages() {
 
 void setup() {
   Serial.begin(115200);
+  pinMode(POWER_SWITCH_PIN, INPUT_PULLUP);
+  powerSwitchStableClosed = digitalRead(POWER_SWITCH_PIN) == LOW;
+  powerSwitchCandidateClosed = powerSwitchStableClosed;
+  powerSwitchCandidateSinceMs = millis();
   speedDisplay.begin(DISPLAY_BRIGHTNESS);
   cellDisplay.begin(DISPLAY_BRIGHTNESS);
   tempDisplay.begin(DISPLAY_BRIGHTNESS);
@@ -506,6 +554,7 @@ void setup() {
 
 void loop() {
   pollBluetooth();
+  pollPowerSwitch();
   const bool liveSpeedSignal = hasLiveSpeedSignal();
   const bool liveTelemetrySignal = hasLiveTelemetrySignal();
   const uint16_t speedKmh = currentSpeedKmh();
