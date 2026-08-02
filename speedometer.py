@@ -355,6 +355,60 @@ def get_speed_display_controller_links():
 
   return is_ready('slave'), is_ready('master')
 
+def get_speed_display_telemetry():
+  front_ready, rear_ready = get_speed_display_controller_links()
+  now = time.time()
+
+  with FARDRIVER_LATEST_LOCK:
+    controller_snapshots = [
+      dict(FARDRIVER_LATEST.get('master', {})),
+      dict(FARDRIVER_LATEST.get('slave', {})),
+    ]
+
+  fresh_controllers = [
+    snapshot for snapshot in controller_snapshots
+    if snapshot.get('updated_at') and now - snapshot['updated_at'] <= 3
+  ]
+  controller_temps = [
+    float(snapshot['mos_temp']) for snapshot in fresh_controllers
+    if snapshot.get('mos_temp') is not None
+  ]
+  motor_temps = [
+    float(snapshot['motor_temp']) for snapshot in fresh_controllers
+    if snapshot.get('motor_temp') is not None
+  ]
+
+  valid_cells = [float(value) for value in data.get('cells_v', []) if float(value) > 0]
+  bms_updated_at = PREV_VALS.get('bms_last_update', 0)
+  bms_ready = bool(
+    ENABLE_BMS and
+    not BMS_LOST and
+    bms_updated_at and
+    now - bms_updated_at <= 3 and
+    valid_cells
+  )
+
+  bms_temperatures = data.get('bms_temp', {})
+  battery_temp_values = [
+    bms_temperatures.get('external_temp_0'),
+    bms_temperatures.get('external_temp_1'),
+    bms_temperatures.get('external_temp_2'),
+    bms_temperatures.get('external_temp_3'),
+    bms_temperatures.get('mosfet_temp'),
+    bms_temperatures.get('balance_temp'),
+  ]
+  battery_temp_values = [float(value) for value in battery_temp_values if value is not None]
+
+  return (
+    int(front_ready),
+    int(rear_ready),
+    int(bms_ready),
+    int(round(min(valid_cells) * 1000.0)) if valid_cells else 0,
+    int(round(max(battery_temp_values))) if battery_temp_values else 0,
+    int(round(max(controller_temps))) if controller_temps else 0,
+    int(round(max(motor_temps))) if motor_temps else 0,
+  )
+
 data_trip = {
   'max_speed': 0,
   'max_power': 0,
@@ -774,17 +828,17 @@ class MirrorController:
 
 
 class SpeedDisplayController:
-  """Streams the already calculated dashboard speed to the small ESP32 display.
+  """Streams dashboard speed, controller state and BMS telemetry to ESP32.
 
-  The protocol is deliberately tiny: an ESP32 named ``SpeedDisplay`` exposes
-  Bluetooth Classic SPP and receives newline-terminated ``SPEED <kmh>`` lines.
+  The ESP32 named ``SpeedDisplay`` exposes Bluetooth Classic SPP and receives
+  newline-terminated ``SPEED`` and ``TELEM`` records.
   """
 
   _device_pattern = re.compile(r"Device\s+([0-9A-Fa-f:]{17})\s+(.+)$")
 
-  def __init__(self, speed_provider, controller_status_provider, bt_name, bt_address, channel):
+  def __init__(self, speed_provider, telemetry_provider, bt_name, bt_address, channel):
     self._speed_provider = speed_provider
-    self._controller_status_provider = controller_status_provider
+    self._telemetry_provider = telemetry_provider
     self._bt_name = bt_name
     self._bt_address = bt_address
     self._channel = channel
@@ -893,12 +947,14 @@ class SpeedDisplayController:
       value = 0.0
     return max(0, min(999, int(round(value))))
 
-  def _read_controller_status(self):
+  def _read_aux_telemetry(self):
     try:
-      front_ready, rear_ready = self._controller_status_provider()
+      values = self._telemetry_provider()
+      if len(values) != 7:
+        raise ValueError("ожидалось семь полей телеметрии")
+      return tuple(int(value) for value in values)
     except Exception:
-      front_ready, rear_ready = False, False
-    return int(bool(front_ready)), int(bool(rear_ready))
+      return 0, 0, 0, 0, 0, 0, 0
 
   def _drain_responses(self):
     if not self._sock:
@@ -919,8 +975,9 @@ class SpeedDisplayController:
         self._sock.sendall(f"SPEED {self._read_speed()}\n".encode("ascii"))
         last_sent_at = now
       if now - last_status_sent_at >= SPEED_DISPLAY_CONTROLLER_STATUS_INTERVAL:
-        front_ready, rear_ready = self._read_controller_status()
-        self._sock.sendall(f"LINK {front_ready} {rear_ready}\n".encode("ascii"))
+        telemetry = self._read_aux_telemetry()
+        payload = " ".join(str(value) for value in telemetry)
+        self._sock.sendall(f"TELEM {payload}\n".encode("ascii"))
         last_status_sent_at = now
       self._drain_responses()
       time.sleep(0.01)
@@ -960,7 +1017,7 @@ mirror_controller = MirrorController(
 )
 speed_display_controller = SpeedDisplayController(
   speed_provider=lambda: data.get('speed', 0.0),
-  controller_status_provider=get_speed_display_controller_links,
+  telemetry_provider=get_speed_display_telemetry,
   bt_name=SPEED_DISPLAY_BT_NAME,
   bt_address=SPEED_DISPLAY_BT_ADDRESS,
   channel=SPEED_DISPLAY_BT_CHANNEL,

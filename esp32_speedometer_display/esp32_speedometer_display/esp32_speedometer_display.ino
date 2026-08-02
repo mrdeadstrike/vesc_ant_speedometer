@@ -5,29 +5,37 @@
 #error "Bluetooth Classic is not enabled for this ESP32 board."
 #endif
 
-// 5643BW is one four-digit TM1637 display. Its two side connectors duplicate
-// the same interface, so only one CLK/DIO pair must drive it.
-// Pin order below is CLK first, then DIO.
-constexpr uint8_t RIGHT_CLK_PIN = 27;
-constexpr uint8_t RIGHT_DIO_PIN = 14;
+// Each 5643BW module uses one CLK/DIO pair. Temporary physical assignment:
+// white speed display = 27/14, cell-voltage display = 26/25,
+// temperature display = 32/33.
+constexpr uint8_t SPEED_CLK_PIN = 27;
+constexpr uint8_t SPEED_DIO_PIN = 14;
+constexpr uint8_t CELL_CLK_PIN = 26;
+constexpr uint8_t CELL_DIO_PIN = 25;
+constexpr uint8_t TEMP_CLK_PIN = 32;
+constexpr uint8_t TEMP_DIO_PIN = 33;
 
-// These pins are connected to the duplicate connector on the module. Keep
-// them high-impedance so they cannot conflict with the real TM1637 bus.
-constexpr uint8_t UNUSED_LEFT_CLK_PIN = 26;
-constexpr uint8_t UNUSED_LEFT_DIO_PIN = 25;
-
-constexpr uint8_t DISPLAY_BRIGHTNESS = 7; // 0 (dim) ... 7 (bright)
+constexpr uint8_t DISPLAY_BRIGHTNESS = 7;
 constexpr char BLUETOOTH_DEVICE_NAME[] = "SpeedDisplay";
 constexpr uint32_t SPEED_SIGNAL_TIMEOUT_MS = 2000;
+constexpr uint32_t TELEMETRY_SIGNAL_TIMEOUT_MS = 2000;
 constexpr uint32_t LINK_ANIMATION_STEP_MS = 100;
-constexpr uint32_t CONTROLLER_ANIMATION_STEP_MS = 150;
+constexpr uint32_t STATUS_ANIMATION_STEP_MS = 150;
+constexpr uint32_t TEMP_PAGE_DURATION_MS = 2000;
+constexpr uint32_t TEMP_ALERT_BLINK_HALF_PERIOD_MS = 500;
+constexpr int16_t BATTERY_ALERT_TEMP_C = 45;
+constexpr int16_t CONTROLLER_ALERT_TEMP_C = 55;
+constexpr int16_t MOTOR_ALERT_TEMP_C = 60;
 constexpr uint8_t FINISH_SPEED_KMH = 60;
 constexpr uint32_t MAX_ACCELERATION_MEASUREMENT_MS = 20000;
 constexpr uint32_t RESULT_BLINK_HALF_PERIOD_MS = 300;
 constexpr uint8_t RESULT_BLINK_COUNT = 5;
-// On this clock-style 5643BW module, bit 7 of TM1637 address #1 (the second
-// digit from the left) switches the central colon. Address #0 does not.
+
+// On this clock-style 5643BW module, bit 7 of address #1 controls the colon.
 constexpr uint8_t COLON_DIGIT_INDEX = 1;
+constexpr uint8_t SEGMENT_COLON = 0x80;
+constexpr uint8_t SEGMENT_C = 0x39;
+constexpr uint8_t SEGMENT_B_APPROXIMATION = 0x7C; // Seven-segment lowercase b.
 
 BluetoothSerial SerialBT;
 
@@ -45,14 +53,12 @@ public:
 
   void setBrightness(uint8_t brightness) {
     brightness_ = constrain(brightness, 0, 7);
-    command(0x88 | brightness_); // Display on + brightness.
+    command(0x88 | brightness_);
   }
 
   uint8_t digit(uint8_t value) const { return digitSegments(value); }
 
-  void showSegments(const uint8_t segments[4]) {
-    writeData(segments, 4);
-  }
+  void showSegments(const uint8_t segments[4]) { writeData(segments, 4); }
 
 private:
   uint8_t clkPin_;
@@ -60,7 +66,6 @@ private:
   uint8_t brightness_ = 7;
 
   static uint8_t digitSegments(uint8_t digit) {
-    // Segments: 0b0GFEDCBA. The tenth entry is a blank digit.
     static constexpr uint8_t DIGITS[] = {
         0x3F, 0x06, 0x5B, 0x4F, 0x66,
         0x6D, 0x7D, 0x07, 0x7F, 0x6F,
@@ -89,17 +94,15 @@ private:
     delaySignal();
   }
 
-  void writeByte(uint8_t data) {
+  void writeByte(uint8_t value) {
     for (uint8_t bit = 0; bit < 8; ++bit) {
       digitalWrite(clkPin_, LOW);
-      digitalWrite(dioPin_, (data >> bit) & 0x01);
+      digitalWrite(dioPin_, (value >> bit) & 0x01);
       delaySignal();
       digitalWrite(clkPin_, HIGH);
       delaySignal();
     }
 
-    // ACK is not needed for this one-way test, but release the line so the
-    // controller can acknowledge without fighting the ESP32 output.
     digitalWrite(clkPin_, LOW);
     pinMode(dioPin_, INPUT_PULLUP);
     delaySignal();
@@ -116,9 +119,9 @@ private:
   }
 
   void writeData(const uint8_t *segments, uint8_t count) {
-    command(0x40); // Automatic address increment.
+    command(0x40);
     start();
-    writeByte(0xC0); // First digit address.
+    writeByte(0xC0);
     for (uint8_t index = 0; index < count; ++index) {
       writeByte(segments[index]);
     }
@@ -127,15 +130,27 @@ private:
   }
 };
 
-TM1637Display display(RIGHT_CLK_PIN, RIGHT_DIO_PIN);
+TM1637Display speedDisplay(SPEED_CLK_PIN, SPEED_DIO_PIN);
+TM1637Display cellDisplay(CELL_CLK_PIN, CELL_DIO_PIN);
+TM1637Display tempDisplay(TEMP_CLK_PIN, TEMP_DIO_PIN);
 
 uint16_t receivedSpeedKmh = 0;
 uint32_t lastSpeedReceivedMs = 0;
 bool receivedSpeed = false;
 bool previousBtClientConnected = false;
 String btInputBuffer;
+
 bool frontControllerReady = false;
 bool rearControllerReady = false;
+bool bmsReady = false;
+uint16_t minimumCellMillivolts = 0;
+int16_t maximumBatteryTempC = 0;
+int16_t maximumControllerTempC = 0;
+int16_t maximumMotorTempC = 0;
+uint32_t lastTelemetryReceivedMs = 0;
+bool receivedTelemetry = false;
+bool allSourcesPreviouslyReady = false;
+uint32_t allSourcesReadySinceMs = 0;
 
 uint32_t accelerationStartMs = 0;
 uint32_t completedAccelerationMs = 0;
@@ -160,23 +175,42 @@ bool tryParseSpeed(const String &text, uint16_t &outSpeed) {
 }
 
 bool tryParseLinkState(const String &text, bool &frontReady, bool &rearReady) {
-  const int separator = text.indexOf(' ');
-  if (separator <= 0) {
+  int front = 0;
+  int rear = 0;
+  if (sscanf(text.c_str(), "%d %d", &front, &rear) != 2 ||
+      front < 0 || front > 1 || rear < 0 || rear > 1) {
     return false;
   }
-  String frontToken = text.substring(0, separator);
-  String rearToken = text.substring(separator + 1);
-  frontToken.trim();
-  rearToken.trim();
+  frontReady = front == 1;
+  rearReady = rear == 1;
+  return true;
+}
 
-  uint16_t frontValue = 0;
-  uint16_t rearValue = 0;
-  if (!tryParseSpeed(frontToken, frontValue) || !tryParseSpeed(rearToken, rearValue) ||
-      frontValue > 1 || rearValue > 1) {
+bool tryParseTelemetry(const String &text) {
+  int front = 0;
+  int rear = 0;
+  int bms = 0;
+  int cellMv = 0;
+  int batteryTemp = 0;
+  int controllerTemp = 0;
+  int motorTemp = 0;
+  if (sscanf(text.c_str(), "%d %d %d %d %d %d %d", &front, &rear, &bms,
+             &cellMv, &batteryTemp, &controllerTemp, &motorTemp) != 7 ||
+      front < 0 || front > 1 || rear < 0 || rear > 1 || bms < 0 || bms > 1 ||
+      cellMv < 0 || cellMv > 6000 || batteryTemp < -99 || batteryTemp > 199 ||
+      controllerTemp < -99 || controllerTemp > 199 || motorTemp < -99 || motorTemp > 199) {
     return false;
   }
-  frontReady = frontValue == 1;
-  rearReady = rearValue == 1;
+
+  frontControllerReady = front == 1;
+  rearControllerReady = rear == 1;
+  bmsReady = bms == 1;
+  minimumCellMillivolts = static_cast<uint16_t>(cellMv);
+  maximumBatteryTempC = static_cast<int16_t>(batteryTemp);
+  maximumControllerTempC = static_cast<int16_t>(controllerTemp);
+  maximumMotorTempC = static_cast<int16_t>(motorTemp);
+  lastTelemetryReceivedMs = millis();
+  receivedTelemetry = true;
   return true;
 }
 
@@ -202,13 +236,13 @@ void processBluetoothCommand(const String &line) {
     } else {
       SerialBT.println("ERR BAD_SPEED");
     }
+  } else if (verb == "TELEM") {
+    if (!tryParseTelemetry(payload)) {
+      SerialBT.println("ERR BAD_TELEM");
+    }
   } else if (verb == "LINK") {
-    bool parsedFrontReady = false;
-    bool parsedRearReady = false;
-    if (tryParseLinkState(payload, parsedFrontReady, parsedRearReady)) {
-      frontControllerReady = parsedFrontReady;
-      rearControllerReady = parsedRearReady;
-    } else {
+    // Backward compatibility with an older Raspberry sender.
+    if (!tryParseLinkState(payload, frontControllerReady, rearControllerReady)) {
       SerialBT.println("ERR BAD_LINK");
     }
   } else if (verb == "PING") {
@@ -233,21 +267,24 @@ void pollBluetooth() {
     if (ch == '\n') {
       processBluetoothCommand(btInputBuffer);
       btInputBuffer = "";
-    } else if (btInputBuffer.length() < 40) {
+    } else if (btInputBuffer.length() < 100) {
       btInputBuffer += ch;
     }
   }
 }
 
-uint16_t currentSpeedKmh() {
-  if (!SerialBT.hasClient() || !receivedSpeed || millis() - lastSpeedReceivedMs > SPEED_SIGNAL_TIMEOUT_MS) {
-    return 0;
-  }
-  return receivedSpeedKmh;
+bool hasLiveSpeedSignal() {
+  return SerialBT.hasClient() && receivedSpeed &&
+         millis() - lastSpeedReceivedMs <= SPEED_SIGNAL_TIMEOUT_MS;
 }
 
-bool hasLiveSpeedSignal() {
-  return SerialBT.hasClient() && receivedSpeed && millis() - lastSpeedReceivedMs <= SPEED_SIGNAL_TIMEOUT_MS;
+bool hasLiveTelemetrySignal() {
+  return SerialBT.hasClient() && receivedTelemetry &&
+         millis() - lastTelemetryReceivedMs <= TELEMETRY_SIGNAL_TIMEOUT_MS;
+}
+
+uint16_t currentSpeedKmh() {
+  return hasLiveSpeedSignal() ? receivedSpeedKmh : 0;
 }
 
 void resetAccelerationMeasurement() {
@@ -260,15 +297,13 @@ void resetAccelerationMeasurement() {
   measurementExpiredThisRun = false;
 }
 
-void showLinkAnimation() {
-  // Two adjacent segments travel clockwise along the outer rim of the four
-  // digits: top row -> right edge -> bottom row -> left edge.
+void showLinkAnimation(TM1637Display &target) {
   static constexpr uint8_t DIGIT_INDEX[] = {0, 1, 2, 3, 3, 3, 3, 2, 1, 0, 0, 0};
   static constexpr uint8_t SEGMENT_BIT[] = {
-      0x01, 0x01, 0x01, 0x01, // top
-      0x02, 0x04, 0x08,       // right and bottom-right corner
-      0x08, 0x08, 0x08,       // bottom
-      0x10, 0x20              // left edge
+      0x01, 0x01, 0x01, 0x01,
+      0x02, 0x04, 0x08,
+      0x08, 0x08, 0x08,
+      0x10, 0x20,
   };
   constexpr uint8_t PATH_LENGTH = sizeof(DIGIT_INDEX) / sizeof(DIGIT_INDEX[0]);
 
@@ -278,7 +313,26 @@ void showLinkAnimation() {
     const uint8_t position = (first + offset) % PATH_LENGTH;
     segments[DIGIT_INDEX[position]] |= SEGMENT_BIT[position];
   }
-  display.showSegments(segments);
+  target.showSegments(segments);
+}
+
+void addLowerSquareAnimation(uint8_t segments[4], uint8_t digitIndex) {
+  static constexpr uint8_t LOWER_SQUARE_BITS[] = {0x40, 0x04, 0x08, 0x10};
+  const uint8_t phase = (millis() / STATUS_ANIMATION_STEP_MS) % 4;
+  segments[digitIndex] |= LOWER_SQUARE_BITS[phase] |
+                          LOWER_SQUARE_BITS[(phase + 1) % 4];
+}
+
+void addBmsCenterAnimation(uint8_t segments[4]) {
+  // One shared lower rectangle spanning the two central digits.
+  static constexpr uint8_t DIGIT_INDEX[] = {1, 2, 2, 2, 1, 1};
+  static constexpr uint8_t SEGMENT_BIT[] = {0x40, 0x40, 0x04, 0x08, 0x08, 0x10};
+  constexpr uint8_t PATH_LENGTH = sizeof(DIGIT_INDEX) / sizeof(DIGIT_INDEX[0]);
+  const uint8_t first = (millis() / STATUS_ANIMATION_STEP_MS) % PATH_LENGTH;
+  for (uint8_t offset = 0; offset < 2; ++offset) {
+    const uint8_t position = (first + offset) % PATH_LENGTH;
+    segments[DIGIT_INDEX[position]] |= SEGMENT_BIT[position];
+  }
 }
 
 void updateAccelerationMeasurement(uint16_t speedKmh) {
@@ -286,9 +340,6 @@ void updateAccelerationMeasurement(uint16_t speedKmh) {
 
   if (speedKmh == 0) {
     accelerationRunning = false;
-    // Let a captured result finish all five flashes even if the simulated
-    // speed has already fallen back to zero. The reset is performed on the
-    // next loop pass after the blinking interval ends.
     if (!resultActive) {
       completedAccelerationMs = 0;
       resultShownThisRun = false;
@@ -304,7 +355,6 @@ void updateAccelerationMeasurement(uint16_t speedKmh) {
 
   if (accelerationRunning) {
     const uint32_t elapsedMs = now - accelerationStartMs;
-
     if (speedKmh >= FINISH_SPEED_KMH && elapsedMs <= MAX_ACCELERATION_MEASUREMENT_MS) {
       completedAccelerationMs = elapsedMs;
       accelerationRunning = false;
@@ -312,8 +362,6 @@ void updateAccelerationMeasurement(uint16_t speedKmh) {
       resultActive = true;
       resultShownThisRun = true;
     } else if (elapsedMs >= MAX_ACCELERATION_MEASUREMENT_MS) {
-      // This start was too slow. Do not restart measuring until speed returns
-      // to zero, which marks the next independent acceleration attempt.
       accelerationRunning = false;
       measurementExpiredThisRun = true;
     }
@@ -324,91 +372,156 @@ bool shouldShowResult() {
   if (!resultActive) {
     return false;
   }
-
   const uint32_t elapsedMs = millis() - resultStartMs;
-  const uint32_t resultDurationMs = RESULT_BLINK_COUNT * 2 * RESULT_BLINK_HALF_PERIOD_MS;
-  if (elapsedMs >= resultDurationMs) {
+  const uint32_t durationMs = RESULT_BLINK_COUNT * 2 * RESULT_BLINK_HALF_PERIOD_MS;
+  if (elapsedMs >= durationMs) {
     resultActive = false;
     return false;
   }
-
   return (elapsedMs / RESULT_BLINK_HALF_PERIOD_MS) % 2 == 0;
 }
 
 void showSpeed(uint16_t speedKmh) {
   uint8_t segments[4] = {0x00, 0x00, 0x00, 0x00};
-
   if (speedKmh >= 100) {
-    // Three digits for 100...999. The fourth digit stays unused.
-    speedKmh = (speedKmh > 999) ? 999 : speedKmh;
-    segments[0] = display.digit(speedKmh / 100);
-    segments[1] = display.digit((speedKmh / 10) % 10);
-    segments[2] = display.digit(speedKmh % 10);
+    speedKmh = speedKmh > 999 ? 999 : speedKmh;
+    segments[0] = speedDisplay.digit(speedKmh / 100);
+    segments[1] = speedDisplay.digit((speedKmh / 10) % 10);
+    segments[2] = speedDisplay.digit(speedKmh % 10);
   } else {
-    // Two digits for 0...99 in the two central positions.
-    segments[1] = display.digit(speedKmh / 10);
-    segments[2] = display.digit(speedKmh % 10);
+    segments[1] = speedDisplay.digit(speedKmh / 10);
+    segments[2] = speedDisplay.digit(speedKmh % 10);
   }
 
-  // While a FarDriver is still establishing telemetry, two adjacent segments
-  // run around the lower square of its outer digit. Left = front/slave,
-  // right = rear/master. Do not corrupt the hundreds digit at 100+ km/h.
-  static constexpr uint8_t LOWER_SQUARE_BITS[] = {0x40, 0x04, 0x08, 0x10};
-  const uint8_t phase = (millis() / CONTROLLER_ANIMATION_STEP_MS) % 4;
   if (!frontControllerReady && speedKmh < 100) {
-    segments[0] |= LOWER_SQUARE_BITS[phase] | LOWER_SQUARE_BITS[(phase + 1) % 4];
+    addLowerSquareAnimation(segments, 0);
   }
   if (!rearControllerReady) {
-    segments[3] |= LOWER_SQUARE_BITS[phase] | LOWER_SQUARE_BITS[(phase + 1) % 4];
+    addLowerSquareAnimation(segments, 3);
   }
-  display.showSegments(segments);
+  speedDisplay.showSegments(segments);
 }
 
 void showAccelerationResult() {
-  // The display has a usable central colon but no separately controlled decimal
-  // points. Use SS:CC, where SS is seconds and CC is hundredths of a second.
   const uint32_t rawCentiseconds = completedAccelerationMs / 10;
-  const uint32_t centiseconds = (rawCentiseconds > 9999) ? 9999 : rawCentiseconds;
+  const uint32_t centiseconds = rawCentiseconds > 9999 ? 9999 : rawCentiseconds;
   const uint8_t seconds = centiseconds / 100;
   const uint8_t hundredths = centiseconds % 100;
-  uint8_t allSegments[4] = {
-      display.digit(seconds / 10),
-      display.digit(seconds % 10),
-      display.digit(hundredths / 10),
-      display.digit(hundredths % 10),
+  uint8_t segments[4] = {
+      speedDisplay.digit(seconds / 10),
+      speedDisplay.digit(seconds % 10),
+      speedDisplay.digit(hundredths / 10),
+      speedDisplay.digit(hundredths % 10),
   };
-  allSegments[COLON_DIGIT_INDEX] |= 0x80;
-
+  segments[COLON_DIGIT_INDEX] |= SEGMENT_COLON;
   if (seconds < 10) {
-    allSegments[0] = 0x00; // Blank leading zero.
+    segments[0] = 0x00;
   }
-  display.showSegments(allSegments);
+  speedDisplay.showSegments(segments);
+}
+
+void showCellVoltage() {
+  // 3450 mV becomes 3:45. This clock module has a colon, not an individually
+  // controllable decimal point, so the colon represents the decimal separator.
+  const uint16_t roundedHundredths = (minimumCellMillivolts + 5) / 10;
+  const uint16_t hundredths = roundedHundredths > 999 ? 999 : roundedHundredths;
+  uint8_t segments[4] = {
+      0x00,
+      cellDisplay.digit((hundredths / 100) % 10),
+      cellDisplay.digit((hundredths / 10) % 10),
+      cellDisplay.digit(hundredths % 10),
+  };
+  segments[COLON_DIGIT_INDEX] |= SEGMENT_COLON;
+  cellDisplay.showSegments(segments);
+}
+
+void showTemperatureWaiting() {
+  uint8_t segments[4] = {0x00, 0x00, 0x00, 0x00};
+  if (!frontControllerReady) {
+    addLowerSquareAnimation(segments, 0);
+  }
+  if (!rearControllerReady) {
+    addLowerSquareAnimation(segments, 3);
+  }
+  if (!bmsReady) {
+    addBmsCenterAnimation(segments);
+  }
+  tempDisplay.showSegments(segments);
+}
+
+void showTemperatureValue(uint8_t page, int16_t rawValue) {
+  const uint8_t value = static_cast<uint8_t>(constrain(rawValue, 0, 99));
+  uint8_t segments[4] = {0x00, 0x00, 0x00, 0x00};
+  if (page == 0) {
+    segments[0] = SEGMENT_B_APPROXIMATION;
+    segments[2] = tempDisplay.digit(value / 10);
+    segments[3] = tempDisplay.digit(value % 10);
+  } else if (page == 1) {
+    segments[0] = SEGMENT_C;
+    segments[2] = tempDisplay.digit(value / 10);
+    segments[3] = tempDisplay.digit(value % 10);
+  } else {
+    segments[1] = tempDisplay.digit(value / 10);
+    segments[2] = tempDisplay.digit(value % 10);
+  }
+  tempDisplay.showSegments(segments);
+}
+
+void showTemperaturePages() {
+  const uint32_t elapsed = millis() - allSourcesReadySinceMs;
+  const uint8_t page = (elapsed / TEMP_PAGE_DURATION_MS) % 3;
+  int16_t value = maximumMotorTempC;
+  int16_t alertThreshold = MOTOR_ALERT_TEMP_C;
+  if (page == 0) {
+    value = maximumBatteryTempC;
+    alertThreshold = BATTERY_ALERT_TEMP_C;
+  } else if (page == 1) {
+    value = maximumControllerTempC;
+    alertThreshold = CONTROLLER_ALERT_TEMP_C;
+  }
+
+  const bool alertBlank = value > alertThreshold &&
+                          (millis() / TEMP_ALERT_BLINK_HALF_PERIOD_MS) % 2 == 1;
+  if (alertBlank) {
+    const uint8_t blank[4] = {0x00, 0x00, 0x00, 0x00};
+    tempDisplay.showSegments(blank);
+  } else {
+    showTemperatureValue(page, value);
+  }
 }
 
 void setup() {
   Serial.begin(115200);
+  speedDisplay.begin(DISPLAY_BRIGHTNESS);
+  cellDisplay.begin(DISPLAY_BRIGHTNESS);
+  tempDisplay.begin(DISPLAY_BRIGHTNESS);
   if (!SerialBT.begin(BLUETOOTH_DEVICE_NAME)) {
     Serial.println("Bluetooth init failed");
     while (true) {
       delay(1000);
     }
   }
-  pinMode(UNUSED_LEFT_CLK_PIN, INPUT);
-  pinMode(UNUSED_LEFT_DIO_PIN, INPUT);
-  display.begin(DISPLAY_BRIGHTNESS);
-  Serial.println("SpeedDisplay Bluetooth SPP ready");
+  Serial.println("SpeedDisplay Bluetooth SPP ready (3 displays)");
 }
 
 void loop() {
   pollBluetooth();
   const bool liveSpeedSignal = hasLiveSpeedSignal();
+  const bool liveTelemetrySignal = hasLiveTelemetrySignal();
   const uint16_t speedKmh = currentSpeedKmh();
 
+  if (!liveTelemetrySignal) {
+    frontControllerReady = false;
+    rearControllerReady = false;
+    bmsReady = false;
+  }
+
   if (!liveSpeedSignal) {
-    // A reconnect starts a fresh 0-60 attempt; never use speed data captured
-    // before a Bluetooth interruption.
     resetAccelerationMeasurement();
-    showLinkAnimation();
+    allSourcesPreviouslyReady = false;
+    showLinkAnimation(speedDisplay);
+    showLinkAnimation(cellDisplay);
+    showLinkAnimation(tempDisplay);
   } else {
     updateAccelerationMeasurement(speedKmh);
     if (shouldShowResult()) {
@@ -416,17 +529,34 @@ void loop() {
     } else if (!resultActive) {
       showSpeed(speedKmh);
     } else {
-      const uint8_t blankSegments[4] = {0x00, 0x00, 0x00, 0x00};
-      display.showSegments(blankSegments);
+      const uint8_t blank[4] = {0x00, 0x00, 0x00, 0x00};
+      speedDisplay.showSegments(blank);
+    }
+
+    if (liveTelemetrySignal && bmsReady) {
+      showCellVoltage();
+    } else {
+      showLinkAnimation(cellDisplay);
+    }
+
+    const bool allSourcesReady = liveTelemetrySignal && frontControllerReady &&
+                                 rearControllerReady && bmsReady;
+    if (allSourcesReady && !allSourcesPreviouslyReady) {
+      allSourcesReadySinceMs = millis();
+    }
+    allSourcesPreviouslyReady = allSourcesReady;
+    if (allSourcesReady) {
+      showTemperaturePages();
+    } else {
+      showTemperatureWaiting();
     }
   }
 
   static uint16_t previousSpeed = 1000;
   if (speedKmh != previousSpeed) {
-    Serial.printf("Speed: %u km/h%s\\n", static_cast<unsigned>(speedKmh),
+    Serial.printf("Speed: %u km/h%s\n", static_cast<unsigned>(speedKmh),
                   resultActive ? " (showing 0-60 result)" : "");
     previousSpeed = speedKmh;
   }
-
   delay(15);
 }
