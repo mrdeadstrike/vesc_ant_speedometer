@@ -85,7 +85,9 @@ FARDRIVER_SERVICE_UUID = os.environ.get("FARDRIVER_SERVICE_UUID", "0000ffe0-0000
 FARDRIVER_NOTIFY_UUID = os.environ.get("FARDRIVER_NOTIFY_UUID", "0000ffe1-0000-1000-8000-00805f9b34fb")
 FARDRIVER_WRITE_UUID = os.environ.get("FARDRIVER_WRITE_UUID", FARDRIVER_NOTIFY_UUID)
 FARDRIVER_NAME_PREFIX = os.environ.get("FARDRIVER_NAME_PREFIX", "YuanQuFOC")
-FARDRIVER_SPEED_CONTROLLER = os.environ.get("FARDRIVER_SPEED_CONTROLLER", "master").strip().lower()
+# By default use the slower of the two fresh wheels. This prevents wheelspin
+# on either axle from inflating the dashboard and external ESP32 speed.
+FARDRIVER_SPEED_CONTROLLER = os.environ.get("FARDRIVER_SPEED_CONTROLLER", "minimum").strip().lower()
 FARDRIVER_SPEED_SOURCE = os.environ.get("FARDRIVER_SPEED_SOURCE", "rpm").strip().lower()
 FARDRIVER_RPM_DIVIDER = float(os.environ.get("FARDRIVER_RPM_DIVIDER", "4"))
 FARDRIVER_INIT_COMMANDS_HEX = os.environ.get(
@@ -328,6 +330,32 @@ FARDRIVER_LIVE_SCAN_CACHE = {
   'updated_at': 0.0,
   'by_name': {},
 }
+
+def select_fardriver_display_speed(fresh_snapshots):
+  """Return (speed_kmh, controller_key) for the shared dashboard speed."""
+  candidates = {}
+  for controller_key in ('master', 'slave'):
+    raw_speed = fresh_snapshots.get(controller_key, {}).get('speed_kmh')
+    if raw_speed is None:
+      continue
+    try:
+      speed = float(raw_speed)
+    except (TypeError, ValueError):
+      continue
+    if math.isfinite(speed) and speed >= 0:
+      candidates[controller_key] = speed
+
+  # Explicit rear/front-only modes remain available for diagnostics. If the
+  # requested controller is stale, fall back to whichever fresh value exists.
+  if FARDRIVER_SPEED_CONTROLLER in ('master', 'slave') and FARDRIVER_SPEED_CONTROLLER in candidates:
+    controller_key = FARDRIVER_SPEED_CONTROLLER
+    return candidates[controller_key], controller_key
+
+  if not candidates:
+    return None, None
+
+  controller_key, speed = min(candidates.items(), key=lambda item: item[1])
+  return speed, controller_key
 
 def get_speed_display_controller_links():
   """Return (front, rear) readiness for the external four-digit display.
@@ -2286,19 +2314,10 @@ class FarDriverTelemetry:
         if item.get('rpm') is not None:
           data[key]['rpm'] = item['rpm']
 
-      speed_source = None
-      speed_source_controller = None
-      if fresh.get('master', {}).get('speed_kmh') is not None:
-        speed_source = fresh['master']
-        speed_source_controller = 'master'
-      elif fresh.get('slave', {}).get('speed_kmh') is not None:
-        speed_source = fresh['slave']
-        speed_source_controller = 'slave'
-      else:
-        speed_source = {}
-      if speed_source.get('speed_kmh') is not None:
-        data['speed'] = speed_source['speed_kmh']
-        data['speed_source_controller'] = speed_source_controller or data.get('speed_source_controller', 'master')
+      selected_speed, speed_source_controller = select_fardriver_display_speed(fresh)
+      if selected_speed is not None:
+        data['speed'] = selected_speed
+        data['speed_source_controller'] = speed_source_controller
 
       voltages = [item['voltage'] for item in fresh.values() if item.get('voltage') is not None]
       battery_currents = [item['battery_current'] for item in fresh.values() if item.get('battery_current') is not None]

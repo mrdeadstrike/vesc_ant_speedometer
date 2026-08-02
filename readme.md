@@ -29,6 +29,8 @@ BLE_DEVICE_MAC=AA:BB:CC:DD:EE:FF ./start_ble_bridge.sh
 - Запуск двух контроллеров одной командой: `./run.sh`.
 - Если нужен другой порт: `FARDRIVER_SERIAL_PORT=/dev/rfcomm0 CONTROLLER_TYPE=fardriver python3 speedometer.py`.
 - Если скорость с FarDriver выглядит неверно, попробуйте альтернативный источник расчёта скорости: `FARDRIVER_SPEED_SOURCE=wheel python3 speedometer.py`.
+- Общая скорость Pygame и внешнего ESP32 по умолчанию равна меньшей из двух свежих скоростей `master`/`slave`, поэтому пробуксовка одного колеса не завышает показания. Если один контроллер не обновлялся более 3 секунд, временно используется второй.
+- Для диагностики можно принудительно выбрать только задний `master` (`FARDRIVER_SPEED_CONTROLLER=master`) или передний `slave` (`FARDRIVER_SPEED_CONTROLLER=slave`).
 
 Что читается с FarDriver:
 - скорость из кадра `0x37` (`Speed / 1000`) или из `MeasureSpeed + AddrD0` при `FARDRIVER_SPEED_SOURCE=wheel`;
